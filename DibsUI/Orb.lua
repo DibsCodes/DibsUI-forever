@@ -89,6 +89,7 @@ local function CreateCastInfo(orb)
 	local info = CreateFrame("Frame", nil, orb)
 	info:SetAllPoints()
 	info:SetFrameLevel(orb:GetFrameLevel() + 5)
+	info:SetIgnoreParentAlpha(true)
 	info:Hide()
 
 	local iconSpec, nameSpec, timeSpec = ns.Text.castIcon, ns.Text.castName, ns.Text.castTime
@@ -163,12 +164,24 @@ local function CreateCastRing(orb)
 
 	local activeCastID
 	local isChanneling = false
+	local isCasting = false
+	local swingStart, swingDuration
 
-	local function Clear()
+	-- With no cast running, the ring shows the main hand swing in grey, or nothing.
+	local function ShowIdle()
 		activeCastID = nil
 		isChanneling = false
-		ring:Clear()
+		isCasting = false
 		info:Hide()
+		ring:SetIgnoreParentAlpha(false)
+		if swingStart and GetTime() < swingStart + swingDuration then
+			local color = ns.Colors.swing
+			ring:SetReverse(true)
+			ring:SetSwipeColor(color[1], color[2], color[3], 1)
+			ring:SetCooldown(swingStart, swingDuration)
+		else
+			ring:Clear()
+		end
 	end
 
 	-- The player's casts are readable, except spells Blizzard individually flags as secret.
@@ -184,12 +197,15 @@ local function CreateCastRing(orb)
 		end
 
 		if issecretvalue(startMS) or issecretvalue(endMS) or startMS == nil then
-			Clear()
+			ShowIdle()
 			return
 		end
 
 		activeCastID = not issecretvalue(castID) and castID or nil
 		isChanneling = not isCast
+		isCasting = true
+		-- Casts always show at full opacity, whatever the rest of the frame is doing.
+		ring:SetIgnoreParentAlpha(true)
 
 		local color = isCast and ns.Colors.cast or ns.Colors.channel
 		local isFilling = isCast or isEmpowered
@@ -203,14 +219,24 @@ local function CreateCastRing(orb)
 		ring:RegisterUnitEvent(event, "player")
 	end
 	ring:RegisterEvent("PLAYER_ENTERING_WORLD")
-	ring:SetScript("OnEvent", function(_, event, _, castID)
-		if CAST_END_EVENTS[event] then
+	ring:RegisterEvent("PLAYER_SWING")
+	ring:SetScript("OnEvent", function(_, event, arg1, arg2)
+		if event == "PLAYER_SWING" then
+			if arg2 == Enum.PlayerSwingType.MainHand then
+				swingStart, swingDuration = GetTime(), arg1
+				if not isCasting then
+					ShowIdle()
+				end
+			end
+			return
+		elseif CAST_END_EVENTS[event] then
+			local castID = arg2
 			if not issecretvalue(castID) and castID == activeCastID then
-				Clear()
+				ShowIdle()
 				return
 			end
 		elseif CHANNEL_END_EVENTS[event] and isChanneling then
-			Clear()
+			ShowIdle()
 			return
 		end
 		Update()

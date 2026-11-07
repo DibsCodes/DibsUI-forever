@@ -12,7 +12,8 @@ ns.Layout = {
 	originY = 240, -- default orb centre above the bottom of the screen
 
 	-- The frame that moves and scales everything, centred on the orb. Big enough to hold the names and cast info.
-	rootWidth = 500,
+	-- Its width follows the bars, plus this margin each side.
+	rootMargin = 5,
 	rootHeight = 230,
 
 	orbQuad = 160, -- size of every orb texture
@@ -20,18 +21,27 @@ ns.Layout = {
 
 	barQuadWidth = 320, -- bar textures start at the orb centre
 	barQuadHeight = 40,
+	-- Bar art is cut in three so the width setting only stretches the straight middle,
+	-- keeping the slanted tip and double border in shape. Distances from the orb centre.
+	barSliceInner = 75,
+	barSliceTip = 165,
+
+	-- The target wing slides from under the ring, so it's clipped where the bar first clears it.
+	-- Left of this it would show through the orb, which is see-through at rest.
+	wingClipInner = 51,
 
 	-- yCenter/height/tip: the visible bar outline. hitInner: where the click area starts.
 	-- fillInner/fillOuter: StatusBar span, measured from the orb centre.
 	-- fillHeight: inside of the double border. capWidth: how far the slanted cap reaches past the fill.
+	-- wedgeWidth: the piece joining the fill's straight inner edge to the curve of the ring.
 	health = {
 		yCenter = 31, height = 34, tip = 245, hitInner = 52,
-		fillInner = 53.5, fillOuter = 224.59, fillHeight = 26, capWidth = 13.76,
+		fillInner = 68, fillOuter = 224.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 14,
 		back = "BarHealthBack", frame = "BarHealthFrame",
 	},
 	power = {
 		yCenter = 2, height = 18, tip = 188, hitInner = 66,
-		fillInner = 63.7, fillOuter = 176.66, fillHeight = 12, capWidth = 6.35,
+		fillInner = 70, fillOuter = 176.66, fillHeight = 12, capWidth = 6.35,
 		back = "BarPowerBack", frame = "BarPowerFrame",
 	},
 }
@@ -108,6 +118,7 @@ ns.Colors = {
 	disabled = { 0.50, 0.50, 0.50 },
 	cast = { 1.00, 0.76, 0.25 },
 	channel = { 0.35, 0.85, 0.75 },
+	swing = { 0.60, 0.60, 0.60 },
 	unknownPower = { 0.70, 0.70, 0.70 },
 	-- PowerBarColor's mana and energy are pure primaries, which turn muddy under the glass shading.
 	power = {
@@ -165,6 +176,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateBars()
 			ns.CreateOrb()
 			ns.CreateMover()
+			ns.CreateOpacity()
 		end
 	elseif event == "PLAYER_LOGIN" then
 		-- These are protected frames, so a /reload during combat has to wait for combat to end.
