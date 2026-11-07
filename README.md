@@ -1,6 +1,6 @@
 # DibsUI
 
-A World of Warcraft Forever addon that replaces the player, pet and target frames with a single winged layout: your health and your pet on the left, your target on the right, and an orb in the middle for your power and casts.
+A World of Warcraft Forever addon that replaces the player, pet, target and target of target frames with a single winged layout: your health and your pet on the left, your target and its target on the right, and an orb in the middle for your power and casts.
 
 ![DibsUI showing pet health, player health, target health and power, the power orb and a cast in progress](screenshots/dibsui.png)
 
@@ -25,6 +25,11 @@ A World of Warcraft Forever addon that replaces the player, pet and target frame
 - Health bars and names are class colored for friendly players, and health bars are reaction colored for everyone else
 - Friendly NPC names use reaction color, and other names are white
 - Level at the top right, colored grey, green, yellow, orange or red by difficulty
+
+**Target of target (far right)**
+- Sits against the end of the target's health bar and slides out with it
+- Name and difficulty-colored level above the bar, with the bar and name colored like the target's
+- Can be turned off in the settings
 
 **Orb (center)**
 - Fills from the bottom with your power, colored by power type, with the amount in the middle
@@ -67,9 +72,10 @@ Type `/dibsui` to open the settings window.
 | Setting | What it does |
 |---|---|
 | Lock position | Uncheck it to show a drag handle and move the frames. Bars don't respond to clicks until you lock it again. |
+| Show target of target | Turns the target of target bar on or off. |
 | Scale | Scales everything from 0.50 to 2.00. Use the slider, or type an exact value and press Enter. |
 | Width | Sets the length of the player and target bars from 0.50 to 2.00. Use the slider, or type an exact value and press Enter. |
-| Pet width | Sets the length of the pet bar from 0.50 to 2.00. Use the slider, or type an exact value and press Enter. |
+| Pet and target of target width | Sets the length of both of those bars from 0.50 to 2.00. Use the slider, or type an exact value and press Enter. |
 | Center horizontally | Centers the orb on the screen, keeping its height. The pet bar doesn't change where the center is. |
 | Up, Down, Left, Right | Moves the frames one screen pixel. These and Center work whether or not the position is locked. |
 
@@ -83,14 +89,11 @@ So far DibsUI has been tested in the UIForever simulator and with offline checks
 
 ## Known limitations
 
-Hiding Blizzard's target frame also hides everything attached to it:
-- Target buffs and debuffs
-- Target of target
-
-Also:
+- Hiding Blizzard's target frame also hides your target's buffs and debuffs
 - Totem and class resource bars still sit where Blizzard's player frame was
 - In a vehicle, the bars keep showing your character
-- Only the main frames are kept on screen when dragging, so the pet bar can go past the left edge
+- Only the main frames are kept on screen when dragging, so the pet and target of target bars can go past the screen's edges
+- The target of target bar still shows when you target yourself
 - Fills start outside the orb's ring, so a nearly empty health bar looks slightly fuller than it is
 - If health and power are both secret values out of combat, only health can affect opacity
 

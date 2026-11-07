@@ -323,23 +323,23 @@ local function CreatePetHealth()
 end
 
 -- Class color for friendly players, reaction color for friendly NPCs, otherwise the default white.
-local function UpdateTargetNameColor(name)
-	local classColor = GetFriendlyClassColor("target")
+local function UpdateTargetNameColor(name, unit)
+	local classColor = GetFriendlyClassColor(unit)
 	if classColor then
 		name:SetTextColor(classColor.r, classColor.g, classColor.b)
-	elseif UnitIsFriend("player", "target") then
-		local r, g, b = UnitSelectionColor("target")
+	elseif UnitIsFriend("player", unit) then
+		local r, g, b = UnitSelectionColor(unit)
 		name:SetTextColor(r, g, b)
 	else
 		name:SetTextColor(1, 1, 1)
 	end
 end
 
-local function UpdateTargetLevel(level)
-	local effectiveLevel = UnitEffectiveLevel("target")
+local function UpdateTargetLevel(level, unit)
+	local effectiveLevel = UnitEffectiveLevel(unit)
 	level:SetText(effectiveLevel > 0 and effectiveLevel or "??")
 	-- Grey, green, yellow, orange or red.
-	local color = GetDifficultyColor(C_PlayerInfo.GetContentDifficultyCreatureForPlayer("target"))
+	local color = GetDifficultyColor(C_PlayerInfo.GetContentDifficultyCreatureForPlayer(unit))
 	level:SetTextColor(color.r, color.g, color.b)
 end
 
@@ -364,8 +364,8 @@ local function CreateTargetName(button)
 			return
 		end
 		name:SetText(UnitName("target"))
-		UpdateTargetNameColor(name)
-		UpdateTargetLevel(level)
+		UpdateTargetNameColor(name, "target")
+		UpdateTargetLevel(level, "target")
 	end)
 end
 
@@ -375,9 +375,6 @@ local function CreateTargetWing()
 	local clip = CreateFrame("Frame", nil, ns.root)
 	clip:SetFrameLevel(ns.Level.bar)
 	clip:SetClipsChildren(true)
-	clip:SetPoint("TOPLEFT", ns.root, "TOP", Layout.wingClipInner, 0)
-	clip:SetPoint("BOTTOMRIGHT", ns.root, "BOTTOMRIGHT")
-
 	local wing = CreateFrame("Frame", nil, clip)
 	wing:SetFrameLevel(ns.Level.bar)
 
@@ -389,8 +386,10 @@ local function CreateTargetWing()
 		wing:SetPoint("CENTER", ns.root, "CENTER", value, 0)
 	end
 
+	-- Far enough for everything on the wing to end up past the clip edge.
 	local function GetTuckedOffset()
-		return Layout.wingClipInner - (Layout.health.tip + ns.GetBarGrowth(Layout.health))
+		local outerSpec = ns.db.showTargetOfTarget and Layout.pet or Layout.health
+		return Layout.wingClipInner - (outerSpec.tip + ns.GetBarGrowth(outerSpec) + ns.GetBarShift(outerSpec))
 	end
 
 	local function OnUpdate(_, delta)
@@ -434,6 +433,10 @@ local function CreateTargetWing()
 	end)
 
 	function wing:UpdateWidth()
+		-- The target of target bar reaches past the root, and the clip has to leave room for it.
+		clip:ClearAllPoints()
+		clip:SetPoint("TOPLEFT", ns.root, "TOP", Layout.wingClipInner, 0)
+		clip:SetPoint("BOTTOMRIGHT", ns.root, "BOTTOMRIGHT", ns.GetOuterBarOverhang(), 0)
 		self:SetSize(ns.GetRootWidth(), Layout.rootHeight)
 		if not hasTarget then
 			Snap()
@@ -502,11 +505,78 @@ local function CreateTargetBars(wing)
 	end)
 end
 
+-- The pet bar mirrored, beyond the target's health bar, on the wing so it slides out with it.
+local function CreateTargetOfTarget(wing)
+	local unit = "targettarget"
+	local spec = Layout.pet
+	local button = CreateBar("DibsUITargetOfTarget", unit, spec, 1, wing)
+	button:SetHitRectInsets(spec.hitInset, 0, 0, 0)
+	local bar, body, overlay = button.bar, button.body, button.overlay
+
+	local levelSpec, nameSpec = ns.Text.totLevel, ns.Text.totName
+	local level = ns.CreateText(overlay, levelSpec)
+	level:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", levelSpec.x, levelSpec.y)
+
+	-- Target names can be long. This keeps them over the bar and clear of the level at any width.
+	local name = ns.CreateText(overlay, nameSpec)
+	name:SetPoint("BOTTOMLEFT", body, "TOPLEFT", nameSpec.x, nameSpec.y)
+	name:SetPoint("BOTTOMRIGHT", level, "BOTTOMLEFT", -3, 0)
+
+	local function Update(interpolation)
+		local exists = UnitExists(unit)
+		body:SetShown(exists)
+		if exists then
+			UpdateHealth(bar, unit, interpolation)
+			UpdateTargetColor(bar, unit)
+			name:SetText(UnitName(unit))
+			UpdateTargetNameColor(name, unit)
+			UpdateTargetLevel(level, unit)
+		end
+	end
+
+	-- This unit has no events of its own, so nothing says when its health or identity changes.
+	-- Blizzard's frame polls as well. This sits apart from the bar, which is hidden with no unit.
+	local poller = CreateFrame("Frame", nil, ns.root)
+	local sinceUpdate = 0
+	poller:SetScript("OnUpdate", function(_, elapsed)
+		sinceUpdate = sinceUpdate + elapsed
+		if sinceUpdate >= 0.1 then
+			sinceUpdate = 0
+			Update(SMOOTH)
+		end
+	end)
+	poller:RegisterEvent("PLAYER_ENTERING_WORLD")
+	poller:RegisterEvent("PLAYER_TARGET_CHANGED")
+	poller:RegisterUnitEvent("UNIT_TARGET", "target")
+	-- Hiding the poller stops OnUpdate, but its events still arrive.
+	poller:SetScript("OnEvent", function()
+		if ns.db.showTargetOfTarget then
+			Update(IMMEDIATE)
+		end
+	end)
+
+	function ns.UpdateTargetOfTargetShown()
+		local shown = ns.db.showTargetOfTarget
+		poller:SetShown(shown)
+		if shown then
+			RegisterUnitWatch(button)
+			Update(IMMEDIATE)
+		else
+			UnregisterUnitWatch(button)
+			button:Hide()
+			body:Hide()
+		end
+	end
+
+	ns.UpdateTargetOfTargetShown()
+end
+
 function ns.CreateBars()
 	CreatePlayerHealth()
 	CreatePetHealth()
 	local wing = CreateTargetWing()
 	CreateTargetBars(wing)
+	CreateTargetOfTarget(wing)
 
 	function ns.UpdateBarWidths()
 		wing:UpdateWidth()

@@ -86,7 +86,7 @@ end
 
 local function CreateConfig()
 	local frame = CreateFrame("Frame", "DibsUIConfig", UIParent, "BasicFrameTemplateWithInset")
-	frame:SetSize(300, 396)
+	frame:SetSize(300, 422)
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("DIALOG")
 	frame:SetClampedToScreen(true)
@@ -109,16 +109,24 @@ local function CreateConfig()
 		ns.SetLocked(self:GetChecked())
 	end)
 
+	local showToT = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+	showToT:SetPoint("TOPLEFT", lock, "BOTTOMLEFT", 0, 2)
+	StyleText(showToT.Text, ns.Text.configLabel)
+	showToT.Text:SetText("Show target of target")
+	showToT:SetScript("OnClick", function(self)
+		ns.SetTargetOfTargetShown(self:GetChecked())
+	end)
+
 	-- The controls line up 6 units in from the checkbox, whose art has that much empty space.
 	local rowAnchor = CreateFrame("Frame", nil, frame)
 	rowAnchor:SetSize(1, 1)
-	rowAnchor:SetPoint("TOPLEFT", lock, "BOTTOMLEFT", 6, 0)
+	rowAnchor:SetPoint("TOPLEFT", showToT, "BOTTOMLEFT", 6, 0)
 
 	local scaleSlider, scaleInput, syncScale, scaleLow = CreateSliderRow(frame, "Scale", ns.ScaleRange, rowAnchor, -8,
 		function() return ns.db.scale end, ns.SetScale)
 	local widthSlider, widthInput, syncWidth, widthLow = CreateSliderRow(frame, "Width", ns.WidthRange, scaleLow, -10,
 		function() return ns.db.width end, ns.SetWidth)
-	local petWidthSlider, petWidthInput, syncPetWidth, petWidthLow = CreateSliderRow(frame, "Pet width", ns.WidthRange, widthLow, -10,
+	local petWidthSlider, petWidthInput, syncPetWidth, petWidthLow = CreateSliderRow(frame, "Pet and target of target width", ns.WidthRange, widthLow, -10,
 		function() return ns.db.petWidth end, ns.SetPetWidth)
 
 	local positionLabel = ns.CreateText(frame, ns.Text.configLabel)
@@ -150,7 +158,7 @@ local function CreateConfig()
 	combatNote:SetPoint("BOTTOM", frame, "BOTTOM", 0, 10)
 	combatNote:SetText("Settings are locked during combat")
 
-	local controls = { lock, scaleSlider, scaleInput, widthSlider, widthInput, petWidthSlider, petWidthInput, center, up, down, left, right }
+	local controls = { lock, showToT, scaleSlider, scaleInput, widthSlider, widthInput, petWidthSlider, petWidthInput, center, up, down, left, right }
 
 	local function SetControlsEnabled(enabled)
 		if not enabled then
@@ -172,6 +180,7 @@ local function CreateConfig()
 
 	frame:SetScript("OnShow", function()
 		lock:SetChecked(ns.db.locked)
+		showToT:SetChecked(ns.db.showTargetOfTarget)
 		syncScale()
 		syncWidth()
 		syncPetWidth()

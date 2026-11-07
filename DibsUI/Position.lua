@@ -10,6 +10,7 @@ local DEFAULTS = {
 	scale = 1,
 	width = 1,
 	petWidth = 1,
+	showTargetOfTarget = true,
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
 	x = 0,
 	y = Layout.originY,
@@ -91,12 +92,17 @@ local function UpdateMover()
 	ns.UpdateOpacity()
 end
 
--- The root stays symmetrical around the orb, so the pet bar hangs out past its left edge.
+-- The root stays symmetrical around the orb and only covers the health bars, so the pet and target
+-- of target bars hang out past its edges by this much.
+function ns.GetOuterBarOverhang()
+	return Layout.pet.tip + ns.GetBarGrowth(Layout.pet) - Layout.health.tip
+end
+
 local function LayoutMover()
-	local petOverhang = Layout.pet.tip + ns.GetBarGrowth(Layout.pet) - Layout.health.tip
+	local overhang = ns.GetOuterBarOverhang()
 	mover:ClearAllPoints()
-	mover:SetPoint("TOPLEFT", root, "TOPLEFT", -petOverhang, 0)
-	mover:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT")
+	mover:SetPoint("TOPLEFT", root, "TOPLEFT", -overhang, 0)
+	mover:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", ns.db.showTargetOfTarget and overhang or 0, 0)
 end
 
 -- Left click on the bars targets, so dragging needs its own handle above them while unlocked.
@@ -164,7 +170,7 @@ function ns.SetWidth(width)
 	return ns.db.width
 end
 
--- Returns the pet bar's width in effect, which is unchanged during combat.
+-- Returns the width of the pet and target of target bars in effect, which is unchanged during combat.
 function ns.SetPetWidth(width)
 	if not InCombatLockdown() then
 		ns.db.petWidth = Clamp(math.floor(width * 100 + 0.5) / 100, ns.WidthRange)
@@ -172,6 +178,15 @@ function ns.SetPetWidth(width)
 		LayoutMover()
 	end
 	return ns.db.petWidth
+end
+
+function ns.SetTargetOfTargetShown(shown)
+	if not InCombatLockdown() then
+		ns.db.showTargetOfTarget = shown
+		ns.UpdateTargetOfTargetShown()
+		ns.UpdateBarWidths()
+		LayoutMover()
+	end
 end
 
 function ns.CenterHorizontally()

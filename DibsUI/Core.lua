@@ -46,7 +46,8 @@ ns.Layout = {
 		fillInner = 70, fillOuter = 176.66, fillHeight = 12, capWidth = 6.35,
 		back = "BarPowerBack", frame = "BarPowerFrame", art = BAR_ART, widthSetting = "width",
 	},
-	-- Distances assume the player bar at its default width; followsHealth moves this bar along with its tip.
+	-- Used by the pet bar and, mirrored, the target of target bar.
+	-- Distances assume the health bar beside it at its default width; followsHealth moves this bar along with that bar's tip.
 	-- hitInset: the click area stops short of the slanted inner end, which reaches under the player bar's tip.
 	pet = {
 		yCenter = 31, height = 34, tip = 369, hitInner = 231, hitInset = 18,
@@ -75,6 +76,9 @@ ns.Text = {
 	petName = { size = 15, x = -9, y = 3 }, -- BOTTOM of the text to the TOP of the pet bar; x centres it on the slanted top edge
 	petHealth = { size = 12, x = 0, y = 0 }, -- CENTER of the pet bar, on mouseover
 	petHappiness = { size = 20, x = 16, y = 3 }, -- BOTTOMLEFT of the icon to the BOTTOMLEFT of the pet bar
+
+	totName = { size = 15, x = 18, y = 3 }, -- BOTTOMLEFT of the text to the TOPLEFT of the bar; runs up to totLevel, centred between
+	totLevel = { size = 12, x = -1, y = 3 }, -- BOTTOMRIGHT to the TOPRIGHT of the target of target bar
 
 	castIcon = { size = 20, x = 0, y = -86 }, -- centre of the icon and name row, from the orb CENTER
 	castName = { size = 13, x = 5, y = 0 }, -- LEFT of the text to the RIGHT of the icon
