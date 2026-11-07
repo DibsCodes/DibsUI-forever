@@ -32,14 +32,14 @@ end
 
 local bars = {}
 
-local function CreateArtSlices(parent, layer, fileName, side)
-	local quad = Layout.barQuadWidth
+local function CreateArtSlices(parent, layer, fileName, side, art)
+	local quad = art.width
 	-- The middle reads a narrow band and only ever stretches. Squeezing a wider strip into a short
 	-- bar would blur the border into dark notches.
 	local ranges = {
-		{ 0, Layout.barSliceInner },
-		{ Layout.barSliceInner, Layout.barSliceInner + 4 },
-		{ Layout.barSliceTip, quad },
+		{ 0, art.sliceInner },
+		{ art.sliceInner, art.sliceInner + 4 },
+		{ art.sliceTip, quad },
 	}
 	local slices = {}
 	for i, range in ipairs(ranges) do
@@ -56,8 +56,8 @@ local function CreateArtSlices(parent, layer, fileName, side)
 end
 
 local function LayoutArtSlices(slices, button, growth, centerDistance)
-	local inner, tipStart = Layout.barSliceInner, Layout.barSliceTip + growth
-	local edges = { 0, inner, tipStart, Layout.barQuadWidth + growth }
+	local art = button.spec.art
+	local edges = { art.start, art.start + art.sliceInner, art.start + art.sliceTip + growth, art.start + art.width + growth }
 	for i, slice in ipairs(slices) do
 		slice:SetSize(edges[i + 1] - edges[i], Layout.barQuadHeight)
 		slice:ClearAllPoints()
@@ -72,15 +72,16 @@ local function LayoutBar(button)
 	local tip = spec.tip + growth
 	local width = tip - spec.hitInner
 	local centerDistance = (tip + spec.hitInner) / 2
+	local shift = ns.GetBarShift(spec)
 
 	button:SetSize(width, spec.height)
 	button:ClearAllPoints()
-	button:SetPoint("CENTER", ns.root, "CENTER", side * centerDistance, spec.yCenter)
+	button:SetPoint("CENTER", ns.root, "CENTER", side * (centerDistance + shift), spec.yCenter)
 
 	local body = button.body
 	body:SetSize(width, spec.height)
 	body:ClearAllPoints()
-	body:SetPoint("CENTER", button.visualParent, "CENTER", side * centerDistance, spec.yCenter)
+	body:SetPoint("CENTER", button.visualParent, "CENTER", side * (centerDistance + shift), spec.yCenter)
 
 	LayoutArtSlices(button.backSlices, button, growth, centerDistance)
 	LayoutArtSlices(button.frameSlices, button, growth, centerDistance)
@@ -133,7 +134,7 @@ local function CreateBar(name, unit, spec, side, visualParent)
 	bar.cap = cap
 
 	if spec.wedgeWidth then
-		local wedge = ns.CreateArt(bar, "ARTWORK", "BarFillInner")
+		local wedge = ns.CreateArt(bar, "ARTWORK", spec.wedgeArt)
 		wedge:SetWidth(spec.wedgeWidth)
 		if side < 0 then
 			wedge:SetPoint("TOPLEFT", bar, "TOPRIGHT")
@@ -157,8 +158,8 @@ local function CreateBar(name, unit, spec, side, visualParent)
 	button.body = body
 	button.bar = bar
 	button.overlay = overlay
-	button.backSlices = CreateArtSlices(body, "BACKGROUND", spec.back, side)
-	button.frameSlices = CreateArtSlices(overlay, "ARTWORK", spec.frame, side)
+	button.backSlices = CreateArtSlices(body, "BACKGROUND", spec.back, side, spec.art)
+	button.frameSlices = CreateArtSlices(overlay, "ARTWORK", spec.frame, side, spec.art)
 	bars[#bars + 1] = button
 	return button
 end
@@ -257,6 +258,68 @@ local function CreatePlayerHealth()
 	end)
 
 	CreatePlayerName(button)
+end
+
+-- Name and level above the bar, and Blizzard's happiness icon, which keeps itself up to date and
+-- hides for pets that aren't a hunter's. It only needs telling when there's a new pet to show.
+local function CreatePetName(button)
+	local overlay = button.overlay
+	local nameSpec = ns.Text.petName
+	local name = ns.CreateText(overlay, nameSpec)
+	name:SetPoint("BOTTOM", button.body, "TOP", nameSpec.x, nameSpec.y)
+
+	local iconSpec = ns.Text.petHappiness
+	local happiness = CreateFrame("Frame", nil, overlay, "PetFrameHappinessTemplate")
+	happiness:SetSize(iconSpec.size, iconSpec.size)
+	happiness:SetPoint("BOTTOMLEFT", button.body, "BOTTOMLEFT", iconSpec.x, iconSpec.y)
+
+	overlay:RegisterUnitEvent("UNIT_NAME_UPDATE", "pet")
+	overlay:RegisterUnitEvent("UNIT_LEVEL", "pet")
+	overlay:RegisterUnitEvent("UNIT_PET", "player")
+	overlay:RegisterEvent("PET_UI_UPDATE")
+	overlay:RegisterEvent("PLAYER_ENTERING_WORLD")
+	overlay:SetScript("OnEvent", function()
+		if UnitExists("pet") then
+			name:SetFormattedText("%s |cffffff00%d|r", UnitName("pet"), UnitEffectiveLevel("pet"))
+			happiness:UpdateHappiness()
+		end
+	end)
+end
+
+local function CreatePetHealth()
+	local spec = Layout.pet
+	local button = CreateBar("DibsUIPetHealth", "pet", spec, -1, ns.root)
+	button:SetHitRectInsets(0, spec.hitInset, 0, 0)
+	RegisterUnitWatch(button)
+	local bar = button.bar
+	local color = ns.Colors.playerHealth
+	SetBarColor(bar, color[1], color[2], color[3])
+
+	local textSpec = ns.Text.petHealth
+	local health = ns.CreateText(button.overlay, textSpec)
+	health:SetPoint("CENTER", button.body, "CENTER", textSpec.x, textSpec.y)
+	health:Hide()
+	button:HookScript("OnEnter", function() health:Show() end)
+	button:HookScript("OnLeave", function() health:Hide() end)
+
+	bar:RegisterUnitEvent("UNIT_HEALTH", "pet")
+	bar:RegisterUnitEvent("UNIT_MAXHEALTH", "pet")
+	bar:RegisterUnitEvent("UNIT_PET", "player")
+	bar:RegisterEvent("PET_UI_UPDATE")
+	bar:RegisterEvent("PLAYER_ENTERING_WORLD")
+	bar:SetScript("OnEvent", function(self, event)
+		local hasPet = UnitExists("pet")
+		button.body:SetShown(hasPet)
+		if not hasPet then
+			health:Hide()
+			return
+		end
+		local interpolation = event == "UNIT_HEALTH" and SMOOTH or IMMEDIATE
+		UpdateHealth(self, "pet", interpolation)
+		health:SetFormattedText("%s / %s", ns.Shorten(UnitHealth("pet")), ns.Shorten(UnitHealthMax("pet")))
+	end)
+
+	CreatePetName(button)
 end
 
 -- Class color for friendly players, reaction color for friendly NPCs, otherwise the default white.
@@ -441,6 +504,7 @@ end
 
 function ns.CreateBars()
 	CreatePlayerHealth()
+	CreatePetHealth()
 	local wing = CreateTargetWing()
 	CreateTargetBars(wing)
 

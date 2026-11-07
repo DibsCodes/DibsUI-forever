@@ -6,6 +6,11 @@ function ns.Media(name)
 	return MEDIA .. name
 end
 
+-- Where a bar's art sits, and where to cut it into three so the width setting only stretches the
+-- straight middle, keeping the slanted ends and double border in shape. Distances from the texture's start.
+local BAR_ART = { start = 0, width = 320, sliceInner = 75, sliceTip = 165 } -- starts at the orb centre
+local PET_ART = { start = 226, width = 160, sliceInner = 30, sliceTip = 114 }
+
 -- Geometry in UI units, with the orb centre as the origin and y pointing up.
 -- The artwork is drawn from the same numbers in devResources/DibsUI/art/generate_art.py.
 ns.Layout = {
@@ -19,12 +24,7 @@ ns.Layout = {
 	orbQuad = 160, -- size of every orb texture
 	orbRadius = 53.5, -- power orb, inside the cast ring
 
-	barQuadWidth = 320, -- bar textures start at the orb centre
 	barQuadHeight = 40,
-	-- Bar art is cut in three so the width setting only stretches the straight middle,
-	-- keeping the slanted tip and double border in shape. Distances from the orb centre.
-	barSliceInner = 75,
-	barSliceTip = 165,
 
 	-- The target wing slides from under the ring, so it's clipped where the bar first clears it.
 	-- Left of this it would show through the orb, which is see-through at rest.
@@ -33,16 +33,24 @@ ns.Layout = {
 	-- yCenter/height/tip: the visible bar outline. hitInner: where the click area starts.
 	-- fillInner/fillOuter: StatusBar span, measured from the orb centre.
 	-- fillHeight: inside of the double border. capWidth: how far the slanted cap reaches past the fill.
-	-- wedgeWidth: the piece joining the fill's straight inner edge to the curve of the ring.
+	-- wedgeWidth/wedgeArt: the piece joining the fill's straight inner edge to the shape of the bar's inner end.
+	-- widthSetting: the saved setting that stretches the bar.
 	health = {
 		yCenter = 31, height = 34, tip = 245, hitInner = 52,
-		fillInner = 68, fillOuter = 224.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 14,
-		back = "BarHealthBack", frame = "BarHealthFrame",
+		fillInner = 68, fillOuter = 224.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 14, wedgeArt = "BarFillInner",
+		back = "BarHealthBack", frame = "BarHealthFrame", art = BAR_ART, widthSetting = "width",
 	},
 	power = {
 		yCenter = 2, height = 18, tip = 188, hitInner = 66,
 		fillInner = 70, fillOuter = 176.66, fillHeight = 12, capWidth = 6.35,
-		back = "BarPowerBack", frame = "BarPowerFrame",
+		back = "BarPowerBack", frame = "BarPowerFrame", art = BAR_ART, widthSetting = "width",
+	},
+	-- Distances assume the player bar at its default width; followsHealth moves this bar along with its tip.
+	-- hitInset: the click area stops short of the slanted inner end, which reaches under the player bar's tip.
+	pet = {
+		yCenter = 31, height = 34, tip = 369, hitInner = 231, hitInset = 18,
+		fillInner = 251.41, fillOuter = 348.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 13.76, wedgeArt = "BarFillSlant",
+		back = "BarPetBack", frame = "BarPetFrame", art = PET_ART, widthSetting = "petWidth", followsHealth = true,
 	},
 }
 
@@ -62,6 +70,10 @@ ns.Text = {
 	targetPower = { size = 10, x = -13, y = 0 }, -- RIGHT of the power bar
 	targetName = { size = 15, x = 0, y = 3 }, -- BOTTOM of the text to the TOP of the right bar
 	targetLevel = { size = 12, x = -1, y = 3 }, -- BOTTOMRIGHT to the TOPRIGHT of the right bar
+
+	petName = { size = 15, x = -9, y = 3 }, -- BOTTOM of the text to the TOP of the pet bar; x centres it on the slanted top edge
+	petHealth = { size = 12, x = 0, y = 0 }, -- CENTER of the pet bar, on mouseover
+	petHappiness = { size = 20, x = 16, y = 3 }, -- BOTTOMLEFT of the icon to the BOTTOMLEFT of the pet bar
 
 	castIcon = { size = 20, x = 0, y = -86 }, -- centre of the icon and name row, from the orb CENTER
 	castName = { size = 13, x = 5, y = 0 }, -- LEFT of the text to the RIGHT of the icon
@@ -153,11 +165,15 @@ end
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
 hiddenParent:Hide()
 
--- PlayerFrame itself stays alive: PetFrame, TotemFrame, RuneFrame and the class resource bars are its children.
+-- PlayerFrame itself stays alive: TotemFrame, RuneFrame and the class resource bars are its children.
+-- PetFrame is laid out by a managed container that takes it back when it's shown, but under a hidden
+-- parent it never fires OnShow, and the OnHide from reparenting takes it out of that layout.
 local function HideBlizzardFrames()
 	PlayerFrame.PlayerFrameContainer:Hide()
 	PlayerFrame.PlayerFrameContent:Hide()
 	PlayerFrame:EnableMouse(false)
+
+	PetFrame:SetParent(hiddenParent)
 
 	TargetFrame:SetParent(hiddenParent)
 

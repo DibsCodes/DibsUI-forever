@@ -9,6 +9,7 @@ local DEFAULTS = {
 	locked = true,
 	scale = 1,
 	width = 1,
+	petWidth = 1,
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
 	x = 0,
 	y = Layout.originY,
@@ -29,12 +30,18 @@ function ns.LoadSettings()
 	end
 	DibsUIDB.scale = Clamp(DibsUIDB.scale, ns.ScaleRange)
 	DibsUIDB.width = Clamp(DibsUIDB.width, ns.WidthRange)
+	DibsUIDB.petWidth = Clamp(DibsUIDB.petWidth, ns.WidthRange)
 	ns.db = DibsUIDB
 end
 
 -- How much longer the width setting makes a bar, in UI units. A negative value means shorter.
 function ns.GetBarGrowth(spec)
-	return (ns.db.width - 1) * (spec.fillOuter - spec.fillInner)
+	return (ns.db[spec.widthSetting] - 1) * (spec.fillOuter - spec.fillInner)
+end
+
+-- How far a bar moves away from the orb to stay attached to the bar it follows.
+function ns.GetBarShift(spec)
+	return spec.followsHealth and ns.GetBarGrowth(Layout.health) or 0
 end
 
 function ns.GetRootWidth()
@@ -84,10 +91,18 @@ local function UpdateMover()
 	ns.UpdateOpacity()
 end
 
+-- The root stays symmetrical around the orb, so the pet bar hangs out past its left edge.
+local function LayoutMover()
+	local petOverhang = Layout.pet.tip + ns.GetBarGrowth(Layout.pet) - Layout.health.tip
+	mover:ClearAllPoints()
+	mover:SetPoint("TOPLEFT", root, "TOPLEFT", -petOverhang, 0)
+	mover:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT")
+end
+
 -- Left click on the bars targets, so dragging needs its own handle above them while unlocked.
 function ns.CreateMover()
 	mover = CreateFrame("Frame", nil, root)
-	mover:SetAllPoints()
+	LayoutMover()
 	mover:SetFrameStrata("MEDIUM")
 	mover:EnableMouse(true)
 	mover:RegisterForDrag("LeftButton")
@@ -147,6 +162,16 @@ function ns.SetWidth(width)
 		ns.UpdateBarWidths()
 	end
 	return ns.db.width
+end
+
+-- Returns the pet bar's width in effect, which is unchanged during combat.
+function ns.SetPetWidth(width)
+	if not InCombatLockdown() then
+		ns.db.petWidth = Clamp(math.floor(width * 100 + 0.5) / 100, ns.WidthRange)
+		ns.UpdateBarWidths()
+		LayoutMover()
+	end
+	return ns.db.petWidth
 end
 
 function ns.CenterHorizontally()

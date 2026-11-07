@@ -86,7 +86,7 @@ end
 
 local function CreateConfig()
 	local frame = CreateFrame("Frame", "DibsUIConfig", UIParent, "BasicFrameTemplateWithInset")
-	frame:SetSize(300, 336)
+	frame:SetSize(300, 396)
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("DIALOG")
 	frame:SetClampedToScreen(true)
@@ -118,9 +118,11 @@ local function CreateConfig()
 		function() return ns.db.scale end, ns.SetScale)
 	local widthSlider, widthInput, syncWidth, widthLow = CreateSliderRow(frame, "Width", ns.WidthRange, scaleLow, -10,
 		function() return ns.db.width end, ns.SetWidth)
+	local petWidthSlider, petWidthInput, syncPetWidth, petWidthLow = CreateSliderRow(frame, "Pet width", ns.WidthRange, widthLow, -10,
+		function() return ns.db.petWidth end, ns.SetPetWidth)
 
 	local positionLabel = ns.CreateText(frame, ns.Text.configLabel)
-	positionLabel:SetPoint("TOPLEFT", widthLow, "BOTTOMLEFT", 0, -10)
+	positionLabel:SetPoint("TOPLEFT", petWidthLow, "BOTTOMLEFT", 0, -10)
 	positionLabel:SetText("Position")
 
 	local center = CreateButton(frame, "Center horizontally", 172)
@@ -148,12 +150,13 @@ local function CreateConfig()
 	combatNote:SetPoint("BOTTOM", frame, "BOTTOM", 0, 10)
 	combatNote:SetText("Settings are locked during combat")
 
-	local controls = { lock, scaleSlider, scaleInput, widthSlider, widthInput, center, up, down, left, right }
+	local controls = { lock, scaleSlider, scaleInput, widthSlider, widthInput, petWidthSlider, petWidthInput, center, up, down, left, right }
 
 	local function SetControlsEnabled(enabled)
 		if not enabled then
 			scaleInput:ClearFocus()
 			widthInput:ClearFocus()
+			petWidthInput:ClearFocus()
 		end
 		for _, control in ipairs(controls) do
 			control:SetEnabled(enabled)
@@ -171,6 +174,7 @@ local function CreateConfig()
 		lock:SetChecked(ns.db.locked)
 		syncScale()
 		syncWidth()
+		syncPetWidth()
 		SetControlsEnabled(not InCombatLockdown())
 	end)
 
