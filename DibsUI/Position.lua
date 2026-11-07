@@ -3,10 +3,12 @@ local _, ns = ...
 local Layout = ns.Layout
 
 ns.ScaleRange = { min = 0.5, max = 2, step = 0.05 }
+ns.WidthRange = { min = 0.5, max = 2, step = 0.05 }
 
 local DEFAULTS = {
 	locked = true,
 	scale = 1,
+	width = 1,
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
 	x = 0,
 	y = Layout.originY,
@@ -14,8 +16,8 @@ local DEFAULTS = {
 
 local root, mover
 
-local function ClampScale(scale)
-	return math.min(math.max(scale, ns.ScaleRange.min), ns.ScaleRange.max)
+local function Clamp(value, range)
+	return math.min(math.max(value, range.min), range.max)
 end
 
 function ns.LoadSettings()
@@ -25,8 +27,18 @@ function ns.LoadSettings()
 			DibsUIDB[key] = value
 		end
 	end
-	DibsUIDB.scale = ClampScale(DibsUIDB.scale)
+	DibsUIDB.scale = Clamp(DibsUIDB.scale, ns.ScaleRange)
+	DibsUIDB.width = Clamp(DibsUIDB.width, ns.WidthRange)
 	ns.db = DibsUIDB
+end
+
+-- How much longer the width setting makes a bar, in UI units. A negative value means shorter.
+function ns.GetBarGrowth(spec)
+	return (ns.db.width - 1) * (spec.fillOuter - spec.fillInner)
+end
+
+function ns.GetRootWidth()
+	return 2 * (Layout.health.tip + ns.GetBarGrowth(Layout.health) + Layout.rootMargin)
 end
 
 local function ApplyPlacement()
@@ -41,7 +53,8 @@ end
 -- buttons are anchored to it, which means it can't be moved or scaled during combat.
 function ns.CreateRoot()
 	root = CreateFrame("Frame", nil, UIParent)
-	root:SetSize(Layout.rootWidth, Layout.rootHeight)
+	root:SetFrameStrata("LOW")
+	root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
 	root:SetMovable(true)
 	root:SetClampedToScreen(true)
 	root:SetDontSavePosition(true)
@@ -68,6 +81,7 @@ end
 
 local function UpdateMover()
 	mover:SetShown(not ns.db.locked and not InCombatLockdown())
+	ns.UpdateOpacity()
 end
 
 -- Left click on the bars targets, so dragging needs its own handle above them while unlocked.
@@ -93,7 +107,7 @@ function ns.CreateMover()
 	end)
 	mover:SetScript("OnDragStop", FinishMoving)
 
-	UpdateMover()
+	mover:SetShown(not ns.db.locked and not InCombatLockdown())
 
 	-- Protected frames can't move in combat, so drop any drag in progress the moment it starts.
 	-- This event fires just before the lockdown begins.
@@ -119,8 +133,35 @@ end
 -- Returns the scale in effect, which is unchanged during combat.
 function ns.SetScale(scale)
 	if not InCombatLockdown() then
-		ns.db.scale = ClampScale(math.floor(scale * 100 + 0.5) / 100)
+		ns.db.scale = Clamp(math.floor(scale * 100 + 0.5) / 100, ns.ScaleRange)
 		ApplyPlacement()
 	end
 	return ns.db.scale
+end
+
+-- Returns the width in effect, which is unchanged during combat.
+function ns.SetWidth(width)
+	if not InCombatLockdown() then
+		ns.db.width = Clamp(math.floor(width * 100 + 0.5) / 100, ns.WidthRange)
+		root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
+		ns.UpdateBarWidths()
+	end
+	return ns.db.width
+end
+
+function ns.CenterHorizontally()
+	if not InCombatLockdown() then
+		ns.db.x = 0
+		ApplyPlacement()
+	end
+end
+
+-- Moves by whole screen pixels. x and y are in pixels, whatever the UI scale.
+function ns.Nudge(x, y)
+	if not InCombatLockdown() then
+		local pixel = PixelUtil.ConvertPixelsToUIForRegion(1, UIParent)
+		ns.db.x = ns.db.x + x * pixel
+		ns.db.y = ns.db.y + y * pixel
+		ApplyPlacement()
+	end
 end
