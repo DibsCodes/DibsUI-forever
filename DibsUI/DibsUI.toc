@@ -1,0 +1,12 @@
+## Interface: 16001
+## Title: DibsUI
+## Author: Dibs
+## Version: 0.1.0
+## Notes: Replaces the player and target frames with a winged power orb layout.
+## SavedVariables: DibsUIDB
+
+Core.lua
+Position.lua
+Bars.lua
+Orb.lua
+Config.lua

@@ -1,0 +1,235 @@
+local _, ns = ...
+
+local Layout = ns.Layout
+
+local SMOOTH = Enum.StatusBarInterpolation.ExponentialEaseOut
+local IMMEDIATE = Enum.StatusBarInterpolation.Immediate
+
+local function CreateLayer(parent, level)
+	local frame = CreateFrame("Frame", nil, parent)
+	frame:SetAllPoints()
+	frame:SetFrameLevel(level)
+	return frame
+end
+
+local function CreatePowerOrb(orb)
+	local fill = CreateFrame("StatusBar", nil, orb)
+	fill:SetSize(Layout.orbRadius * 2, Layout.orbRadius * 2)
+	fill:SetPoint("CENTER")
+	fill:SetFrameLevel(orb:GetFrameLevel() + 1)
+	fill:SetOrientation("VERTICAL")
+	fill:SetFillStyle(Enum.StatusBarFillStyle.StandardNoRangeFill)
+	fill:SetStatusBarTexture(ns.Media("Flat"))
+
+	-- A flat fill clipped by Blizzard's round mask, so the level rises inside the circle.
+	-- The sphere shading lives on the glass layer above.
+	local mask = fill:CreateMaskTexture()
+	mask:SetAtlas("CircleMask")
+	mask:SetAllPoints()
+	fill:GetStatusBarTexture():AddMaskTexture(mask)
+
+	local glass = CreateLayer(orb, orb:GetFrameLevel() + 2)
+	ns.CreateArt(glass, "ARTWORK", "OrbGlass"):SetAllPoints()
+
+	local valueSpec = ns.Text.orbPower
+	local value = ns.CreateText(glass, valueSpec)
+	value:SetPoint("CENTER", glass, "CENTER", valueSpec.x, valueSpec.y)
+
+	-- Power can be secret. It only goes into the widgets, as with the bars.
+	local function Update(interpolation)
+		local powerType, powerToken = UnitPowerType("player")
+		if not powerType then
+			return
+		end
+		fill:SetStatusBarColor(ns.GetPowerColor(powerToken))
+		fill:SetMinMaxValues(0, UnitPowerMax("player", powerType))
+		fill:SetValue(UnitPower("player", powerType), interpolation)
+		value:SetText(ns.Shorten(UnitPower("player", powerType)))
+	end
+
+	fill:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+	fill:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
+	fill:RegisterUnitEvent("UNIT_MAXPOWER", "player")
+	fill:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
+	fill:RegisterEvent("PLAYER_ENTERING_WORLD")
+	fill:SetScript("OnEvent", function(_, event)
+		local isPowerTick = event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT"
+		Update(isPowerTick and SMOOTH or IMMEDIATE)
+	end)
+end
+
+local CAST_EVENTS = {
+	"UNIT_SPELLCAST_START",
+	"UNIT_SPELLCAST_STOP",
+	"UNIT_SPELLCAST_FAILED",
+	"UNIT_SPELLCAST_INTERRUPTED",
+	"UNIT_SPELLCAST_DELAYED",
+	"UNIT_SPELLCAST_CHANNEL_START",
+	"UNIT_SPELLCAST_CHANNEL_UPDATE",
+	"UNIT_SPELLCAST_CHANNEL_STOP",
+	"UNIT_SPELLCAST_EMPOWER_START",
+	"UNIT_SPELLCAST_EMPOWER_UPDATE",
+	"UNIT_SPELLCAST_EMPOWER_STOP",
+}
+
+-- These can arrive for an older or rejected cast while a newer one is running, so they carry a cast ID to check.
+local CAST_END_EVENTS = {
+	UNIT_SPELLCAST_STOP = true,
+	UNIT_SPELLCAST_FAILED = true,
+	UNIT_SPELLCAST_INTERRUPTED = true,
+}
+
+local CHANNEL_END_EVENTS = {
+	UNIT_SPELLCAST_CHANNEL_STOP = true,
+	UNIT_SPELLCAST_EMPOWER_STOP = true,
+}
+
+-- Below the orb: a round spell icon beside the name, then "current / total" under them.
+local function CreateCastInfo(orb)
+	local info = CreateFrame("Frame", nil, orb)
+	info:SetAllPoints()
+	info:SetFrameLevel(orb:GetFrameLevel() + 5)
+	info:Hide()
+
+	local iconSpec, nameSpec, timeSpec = ns.Text.castIcon, ns.Text.castName, ns.Text.castTime
+
+	local icon = info:CreateTexture(nil, "ARTWORK")
+	icon:SetSize(iconSpec.size, iconSpec.size)
+	-- Spell icons have a baked-in border, which the crop removes.
+	icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+	local mask = info:CreateMaskTexture()
+	mask:SetAtlas("CircleMask")
+	mask:SetAllPoints(icon)
+	icon:AddMaskTexture(mask)
+
+	local name = ns.CreateText(info, nameSpec)
+	name:SetPoint("LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
+
+	local timeText = ns.CreateText(info, timeSpec)
+	timeText:SetPoint("CENTER", orb, "CENTER", timeSpec.x, timeSpec.y)
+
+	local startMS, endMS, countsDown
+	local sinceUpdate = 0
+
+	local function UpdateTime()
+		local total = (endMS - startMS) / 1000
+		local current = math.min(math.max(GetTime() - startMS / 1000, 0), total)
+		timeText:SetFormattedText("%.1f / %.1f", countsDown and total - current or current, total)
+	end
+
+	info:SetScript("OnUpdate", function(_, elapsed)
+		sinceUpdate = sinceUpdate + elapsed
+		if sinceUpdate >= 0.05 then
+			sinceUpdate = 0
+			UpdateTime()
+		end
+	end)
+
+	-- These are only called for casts whose details are readable, so measuring the name is safe.
+	function info:Start(spellName, texture, castStartMS, castEndMS, isDraining)
+		startMS, endMS, countsDown = castStartMS, castEndMS, isDraining
+		icon:SetTexture(texture)
+		name:SetText(spellName)
+
+		-- Centres the icon and name as one group under the orb.
+		local rowWidth = iconSpec.size + nameSpec.x + name:GetStringWidth()
+		icon:ClearAllPoints()
+		icon:SetPoint("CENTER", orb, "CENTER", iconSpec.x + (iconSpec.size - rowWidth) / 2, iconSpec.y)
+
+		UpdateTime()
+		self:Show()
+	end
+
+	return info
+end
+
+local function CreateCastRing(orb)
+	local info = CreateCastInfo(orb)
+
+	-- A Cooldown swipe starts at 12 o'clock and travels clockwise. Reversed, the swipe is
+	-- the elapsed part, so it grows as a cast fills. Unreversed it is the remaining part,
+	-- so a channel drains in the same direction.
+	local ring = CreateFrame("Cooldown", nil, orb)
+	ring:SetAllPoints()
+	ring:SetFrameLevel(orb:GetFrameLevel() + 3)
+	ring:SetHideCountdownNumbers(true)
+	ring:SetDrawBling(false)
+	ring:SetDrawSwipe(true)
+	ring:SetSwipeTexture(ns.Media("CastRing"), 1, 1, 1, 1)
+	ring:SetEdgeTexture(ns.Media("CastEdge"), 1, 1, 1, 1)
+	ring:SetDrawEdge(true)
+	ring:SetUseCircularEdge(true)
+
+	local activeCastID
+	local isChanneling = false
+
+	local function Clear()
+		activeCastID = nil
+		isChanneling = false
+		ring:Clear()
+		info:Hide()
+	end
+
+	-- The player's casts are readable, except spells Blizzard individually flags as secret.
+	-- Those can't be timed from addon code, so the ring stays empty for them. Check for
+	-- secrecy first, because even comparing a secret value to nil is an error.
+	local function Update()
+		local _, spellName, texture, startMS, endMS, castID, isEmpowered
+		_, spellName, texture, startMS, endMS, _, castID = UnitCastingInfo("player")
+		local isCast = issecretvalue(startMS) or startMS ~= nil
+		if not isCast then
+			_, spellName, texture, startMS, endMS, _, _, _, isEmpowered = UnitChannelInfo("player")
+			castID = nil
+		end
+
+		if issecretvalue(startMS) or issecretvalue(endMS) or startMS == nil then
+			Clear()
+			return
+		end
+
+		activeCastID = not issecretvalue(castID) and castID or nil
+		isChanneling = not isCast
+
+		local color = isCast and ns.Colors.cast or ns.Colors.channel
+		local isFilling = isCast or isEmpowered
+		ring:SetReverse(isFilling)
+		ring:SetSwipeColor(color[1], color[2], color[3], 1)
+		ring:SetCooldown(startMS / 1000, (endMS - startMS) / 1000)
+		info:Start(spellName, texture, startMS, endMS, not isFilling)
+	end
+
+	for _, event in ipairs(CAST_EVENTS) do
+		ring:RegisterUnitEvent(event, "player")
+	end
+	ring:RegisterEvent("PLAYER_ENTERING_WORLD")
+	ring:SetScript("OnEvent", function(_, event, _, castID)
+		if CAST_END_EVENTS[event] then
+			if not issecretvalue(castID) and castID == activeCastID then
+				Clear()
+				return
+			end
+		elseif CHANNEL_END_EVENTS[event] and isChanneling then
+			Clear()
+			return
+		end
+		Update()
+	end)
+end
+
+function ns.CreateOrb()
+	local orb = CreateFrame("Frame", "DibsUIOrb", ns.root)
+	orb:SetFrameStrata("LOW")
+	orb:SetFrameLevel(ns.Level.orb)
+	orb:SetSize(Layout.orbQuad, Layout.orbQuad)
+	orb:SetPoint("CENTER", ns.root, "CENTER")
+
+	ns.CreateArt(orb, "BACKGROUND", "OrbBack"):SetAllPoints()
+
+	CreatePowerOrb(orb)
+	CreateCastRing(orb)
+
+	-- Rims and the 12 o'clock tick, above the cast swipe.
+	local rim = CreateLayer(orb, orb:GetFrameLevel() + 4)
+	ns.CreateArt(rim, "ARTWORK", "OrbFrame"):SetAllPoints()
+end
