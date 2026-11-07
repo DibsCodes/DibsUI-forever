@@ -58,6 +58,61 @@ local function CreatePowerOrb(orb)
 	end)
 end
 
+local MAX_COMBO_POINTS = 5
+
+-- Rogues always, and druids while they're on energy, which is cat form.
+local function UsesComboPoints()
+	local _, classFile = UnitClass("player")
+	if classFile == "ROGUE" then
+		return true
+	end
+	local _, powerToken = UnitPowerType("player")
+	return classFile == "DRUID" and powerToken == "ENERGY"
+end
+
+-- Combo points are held on the target and can be secret, so addon code can't compare them. Each
+-- segment is a status bar covering one point of the range, which leaves it either empty or full.
+local function CreateComboRing(orb)
+	local ring = CreateFrame("Frame", "DibsUIComboRing", orb)
+	ring:SetSize(Layout.comboQuad, Layout.comboQuad)
+	ring:SetPoint("CENTER")
+	ring:SetFrameLevel(orb:GetFrameLevel() + 3)
+	ns.CreateArt(ring, "ARTWORK", "ComboTrack"):SetAllPoints()
+
+	local segments = {}
+	for i = 1, MAX_COMBO_POINTS do
+		local segment = CreateFrame("StatusBar", nil, ring)
+		segment:SetAllPoints()
+		segment:SetFrameLevel(ring:GetFrameLevel() + 1)
+		segment:SetStatusBarTexture(ns.Media("ComboSegment" .. i))
+		local color = ns.Colors.combo[i]
+		segment:SetStatusBarColor(color[1], color[2], color[3])
+		segment:SetMinMaxValues(i - 1, i)
+		segments[i] = segment
+	end
+
+	ring:RegisterEvent("PLAYER_ENTERING_WORLD")
+	ring:RegisterEvent("PLAYER_TARGET_CHANGED")
+	-- Moving points to a new target keeps the same count, so no power event fires.
+	ring:RegisterEvent("COMBO_TARGET_CHANGED")
+	ring:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+	ring:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+	ring:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
+	ring:RegisterUnitEvent("UNIT_POWER_POINT_CHARGE", "player")
+	ring:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
+	ring:SetScript("OnEvent", function(self)
+		local isUsed = UsesComboPoints()
+		self:SetShown(isUsed)
+		if isUsed then
+			local points = GetComboPoints("player", "target")
+			for _, segment in ipairs(segments) do
+				segment:SetValue(points)
+			end
+		end
+	end)
+	ring:Hide()
+end
+
 local CAST_EVENTS = {
 	"UNIT_SPELLCAST_START",
 	"UNIT_SPELLCAST_STOP",
@@ -253,6 +308,7 @@ function ns.CreateOrb()
 	ns.CreateArt(orb, "BACKGROUND", "OrbBack"):SetAllPoints()
 
 	CreatePowerOrb(orb)
+	CreateComboRing(orb)
 	CreateCastRing(orb)
 
 	-- Rims and the 12 o'clock tick, above the cast swipe.

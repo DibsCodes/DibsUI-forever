@@ -30,6 +30,11 @@ A World of Warcraft Forever addon that replaces the player, pet and target frame
 - Fills from the bottom with your power, colored by power type, with the amount in the middle
 - Numbers are shortened: `999`, `1.2k`, `12k`, `1.2m`
 
+**Combo points**
+- A five-segment ring on the inner edge of the orb, filling clockwise from 12 o'clock
+- The first two points are yellow, the next two orange, and the last red
+- Shows for rogues, and for druids in cat form, with the points on your current target
+
 **Cast ring**
 - Fills clockwise around the orb while casting, and drains clockwise while channeling
 - Shows a round spell icon, the spell name and `current / total` time below the orb
@@ -74,14 +79,13 @@ Settings are saved per account, and can't be changed during combat.
 
 Early development, for interface version 16001.
 
-So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events and a real pet, still needs checking in-game.
+So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet and real combo points, still needs checking in-game.
 
 ## Known limitations
 
 Hiding Blizzard's target frame also hides everything attached to it:
 - Target buffs and debuffs
 - Target of target
-- Rogue and druid combo points
 
 Also:
 - Totem and class resource bars still sit where Blizzard's player frame was

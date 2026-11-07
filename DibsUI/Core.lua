@@ -23,6 +23,7 @@ ns.Layout = {
 
 	orbQuad = 160, -- size of every orb texture
 	orbRadius = 53.5, -- power orb, inside the cast ring
+	comboQuad = 108, -- size of the combo point textures, which sit on the orb's inner edge
 
 	barQuadHeight = 40,
 
@@ -131,6 +132,14 @@ ns.Colors = {
 	cast = { 1.00, 0.76, 0.25 },
 	channel = { 0.35, 0.85, 0.75 },
 	swing = { 0.60, 0.60, 0.60 },
+	-- One per combo point, in the order they're earned.
+	combo = {
+		{ 1.00, 0.88, 0.10 },
+		{ 1.00, 0.88, 0.10 },
+		{ 1.00, 0.50, 0.05 },
+		{ 1.00, 0.50, 0.05 },
+		{ 0.95, 0.12, 0.08 },
+	},
 	unknownPower = { 0.70, 0.70, 0.70 },
 	-- PowerBarColor's mana and energy are pure primaries, which turn muddy under the glass shading.
 	power = {
