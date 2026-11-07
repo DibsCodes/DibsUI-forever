@@ -136,6 +136,8 @@ ns.Colors = {
 	cast = { 1.00, 0.76, 0.25 },
 	channel = { 0.35, 0.85, 0.75 },
 	swing = { 0.60, 0.60, 0.60 },
+	manaRule = { 1.00, 0.72, 0.20 }, -- the spark during the five second rule
+	manaTick = { 0.80, 0.95, 1.00 }, -- the spark between regular mana ticks
 	-- One per combo point, in the order they're earned.
 	combo = {
 		{ 1.00, 0.88, 0.10 },

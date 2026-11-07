@@ -40,6 +40,12 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - The first two points are yellow, the next two orange, and the last red
 - Shows for rogues, and for druids in cat form, with the points on your current target
 
+**Mana spark**
+- A spark circles the orb's inner edge on mana users, reaching 12 o'clock when your next mana tick is due
+- After you spend mana, it does one slower lap in gold, until the first tick after the five second rule ends
+- Hidden at full mana
+- The tick interval is learned from your mana gains, starting from 2 seconds
+
 **Cast ring**
 - Fills clockwise around the orb while casting, and drains clockwise while channeling
 - Shows a round spell icon, the spell name and `current / total` time below the orb
@@ -85,7 +91,7 @@ Settings are saved per account, and can't be changed during combat.
 
 Early development, for interface version 16001.
 
-So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet and real combo points, still needs checking in-game.
+So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points and real mana regen, still needs checking in-game.
 
 ## Known limitations
 
@@ -94,6 +100,7 @@ So far DibsUI has been tested in the UIForever simulator and with offline checks
 - In a vehicle, the bars keep showing your character
 - Only the main frames are kept on screen when dragging, so the pet and target of target bars can go past the screen's edges
 - The target of target bar still shows when you target yourself
+- The mana spark hides if your mana is a secret value, and anything that lowers or raises your mana can briefly throw its timing off
 - Fills start outside the orb's ring, so a nearly empty health bar looks slightly fuller than it is
 - If health and power are both secret values out of combat, only health can affect opacity
 

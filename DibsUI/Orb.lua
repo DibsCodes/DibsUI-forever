@@ -113,6 +113,100 @@ local function CreateComboRing(orb)
 	ring:Hide()
 end
 
+local FIVE_SECOND_RULE = 5
+local DEFAULT_TICK_INTERVAL = 2
+local MIN_TICK_INTERVAL, MAX_TICK_INTERVAL = 0.5, 3
+
+-- A spark circling the orb's inner edge, reaching 12 o'clock when the next mana tick is due. Spending
+-- mana sends it on one slower lap in gold, lasting until the first tick after the five second rule.
+-- The tick interval is learned from the gaps between mana gains. All this compares mana, so the
+-- spark has to hide while mana is secret.
+local function CreateManaSpark(orb)
+	local frame = CreateFrame("Frame", "DibsUIManaSpark", orb)
+	frame:SetSize(Layout.comboQuad, Layout.comboQuad)
+	frame:SetPoint("CENTER")
+	frame:SetFrameLevel(orb:GetFrameLevel() + 3)
+	frame:Hide()
+
+	local spark = ns.CreateArt(frame, "ARTWORK", "ManaSpark")
+	spark:SetAllPoints()
+
+	local lastMana, lastTick
+	local tickInterval = DEFAULT_TICK_INTERVAL
+	local ruleEnd = 0
+	local lapStart, lapEnd = 0, 0
+
+	local function StartLap(start, finish, color)
+		lapStart, lapEnd = start, finish
+		spark:SetVertexColor(color[1], color[2], color[3])
+	end
+
+	-- The first expected tick at or after this time, or the time itself until a tick has been seen.
+	local function NextTickAfter(time)
+		if not lastTick then
+			return time
+		end
+		return lastTick + math.ceil((time - lastTick) / tickInterval) * tickInterval
+	end
+
+	local function OnManaSpent(now)
+		ruleEnd = now + FIVE_SECOND_RULE
+		StartLap(now, NextTickAfter(ruleEnd), ns.Colors.manaRule)
+	end
+
+	local function OnManaGained(now)
+		if lastTick then
+			local gap = now - lastTick
+			if gap >= MIN_TICK_INTERVAL and gap <= MAX_TICK_INTERVAL then
+				tickInterval = gap
+			end
+		end
+		lastTick = now
+		if now >= ruleEnd then
+			StartLap(now, now + tickInterval, ns.Colors.manaTick)
+		end
+	end
+
+	local function UpdateMana()
+		local _, powerToken = UnitPowerType("player")
+		local mana, maxMana = UnitPower("player", Enum.PowerType.Mana), UnitPowerMax("player", Enum.PowerType.Mana)
+		if powerToken ~= "MANA" or issecretvalue(mana) or issecretvalue(maxMana) then
+			lastMana = nil
+			frame:Hide()
+			return
+		end
+
+		local now = GetTime()
+		if lastMana then
+			if mana < lastMana then
+				OnManaSpent(now)
+			elseif mana > lastMana then
+				OnManaGained(now)
+			end
+		end
+		lastMana = mana
+		frame:SetShown(mana < maxMana)
+	end
+
+	frame:SetScript("OnUpdate", function()
+		local now = GetTime()
+		-- No gain arrived on time, so go round again until one does.
+		if now >= lapEnd then
+			StartLap(now, now + tickInterval, ns.Colors.manaTick)
+		end
+		-- Rotation runs anticlockwise, so clockwise travel is negative.
+		spark:SetRotation(-2 * math.pi * (now - lapStart) / (lapEnd - lapStart))
+	end)
+
+	-- Events still arrive while the frame is hidden, which is how it comes back.
+	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+	frame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+	frame:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
+	frame:RegisterUnitEvent("UNIT_MAXPOWER", "player")
+	frame:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
+	frame:SetScript("OnEvent", UpdateMana)
+end
+
 local CAST_EVENTS = {
 	"UNIT_SPELLCAST_START",
 	"UNIT_SPELLCAST_STOP",
@@ -309,6 +403,7 @@ function ns.CreateOrb()
 
 	CreatePowerOrb(orb)
 	CreateComboRing(orb)
+	CreateManaSpark(orb)
 	CreateCastRing(orb)
 
 	-- Rims and the 12 o'clock tick, above the cast swipe.
