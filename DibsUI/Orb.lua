@@ -114,97 +114,68 @@ local function CreateComboRing(orb)
 end
 
 local FIVE_SECOND_RULE = 5
-local DEFAULT_TICK_INTERVAL = 2
-local MIN_TICK_INTERVAL, MAX_TICK_INTERVAL = 0.5, 3
 
--- A spark circling the orb's inner edge, reaching 12 o'clock when the next mana tick is due. Spending
--- mana sends it on one slower lap in gold, lasting until the first tick after the five second rule.
--- The tick interval is learned from the gaps between mana gains. All this compares mana, so the
--- spark has to hide while mana is secret.
+-- Item uses, wands and free spells cost no mana, so they don't trigger the rule.
+local function CostsMana(spellID)
+	local costs = C_Spell.GetSpellPowerCost(spellID)
+	if issecretvalue(costs) or not costs then
+		return false
+	end
+	for _, info in ipairs(costs) do
+		if not issecretvalue(info.type) and info.type == Enum.PowerType.Mana then
+			local cost, perSecond, percent = info.cost, info.costPerSec, info.costPercent
+			if not (issecretvalue(cost) or issecretvalue(perSecond) or issecretvalue(percent))
+				and (cost > 0 or perSecond > 0 or percent > 0) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- A spark that circles the orb's inner edge once after a mana spell succeeds, for the five seconds
+-- of the rule, then goes away. It works from the cast rather than from mana, which can be secret.
 local function CreateManaSpark(orb)
 	local frame = CreateFrame("Frame", "DibsUIManaSpark", orb)
-	frame:SetSize(Layout.comboQuad, Layout.comboQuad)
+	frame:SetSize(Layout.manaSparkQuad, Layout.manaSparkQuad)
 	frame:SetPoint("CENTER")
 	frame:SetFrameLevel(orb:GetFrameLevel() + 3)
 	frame:Hide()
 
+	local color = ns.Colors.manaRule
 	local spark = ns.CreateArt(frame, "ARTWORK", "ManaSpark")
 	spark:SetAllPoints()
+	spark:SetVertexColor(color[1], color[2], color[3])
 
-	local lastMana, lastTick
-	local tickInterval = DEFAULT_TICK_INTERVAL
 	local ruleEnd = 0
-	local lapStart, lapEnd = 0, 0
 
-	local function StartLap(start, finish, color)
-		lapStart, lapEnd = start, finish
-		spark:SetVertexColor(color[1], color[2], color[3])
-	end
-
-	-- The first expected tick at or after this time, or the time itself until a tick has been seen.
-	local function NextTickAfter(time)
-		if not lastTick then
-			return time
-		end
-		return lastTick + math.ceil((time - lastTick) / tickInterval) * tickInterval
-	end
-
-	local function OnManaSpent(now)
-		ruleEnd = now + FIVE_SECOND_RULE
-		StartLap(now, NextTickAfter(ruleEnd), ns.Colors.manaRule)
-	end
-
-	local function OnManaGained(now)
-		if lastTick then
-			local gap = now - lastTick
-			if gap >= MIN_TICK_INTERVAL and gap <= MAX_TICK_INTERVAL then
-				tickInterval = gap
-			end
-		end
-		lastTick = now
-		if now >= ruleEnd then
-			StartLap(now, now + tickInterval, ns.Colors.manaTick)
-		end
-	end
-
-	local function UpdateMana()
+	local function UpdateShown()
 		local _, powerToken = UnitPowerType("player")
-		local mana, maxMana = UnitPower("player", Enum.PowerType.Mana), UnitPowerMax("player", Enum.PowerType.Mana)
-		if powerToken ~= "MANA" or issecretvalue(mana) or issecretvalue(maxMana) then
-			lastMana = nil
-			frame:Hide()
+		frame:SetShown(powerToken == "MANA" and GetTime() < ruleEnd)
+	end
+
+	frame:SetScript("OnUpdate", function(self)
+		local remaining = ruleEnd - GetTime()
+		if remaining <= 0 then
+			self:Hide()
 			return
 		end
-
-		local now = GetTime()
-		if lastMana then
-			if mana < lastMana then
-				OnManaSpent(now)
-			elseif mana > lastMana then
-				OnManaGained(now)
-			end
-		end
-		lastMana = mana
-		frame:SetShown(mana < maxMana)
-	end
-
-	frame:SetScript("OnUpdate", function()
-		local now = GetTime()
-		-- No gain arrived on time, so go round again until one does.
-		if now >= lapEnd then
-			StartLap(now, now + tickInterval, ns.Colors.manaTick)
-		end
 		-- Rotation runs anticlockwise, so clockwise travel is negative.
-		spark:SetRotation(-2 * math.pi * (now - lapStart) / (lapEnd - lapStart))
+		spark:SetRotation(-2 * math.pi * (1 - remaining / FIVE_SECOND_RULE))
 	end)
 
-	-- Events still arrive while the frame is hidden, which is how it comes back.
-	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	frame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
-	frame:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
-	frame:RegisterUnitEvent("UNIT_MAXPOWER", "player")
+	frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 	frame:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
-	frame:SetScript("OnEvent", UpdateMana)
+	frame:SetScript("OnEvent", function(_, event, _, _, spellID)
+		if event == "UNIT_SPELLCAST_SUCCEEDED" then
+			if not CostsMana(spellID) then
+				return
+			end
+			ruleEnd = GetTime() + FIVE_SECOND_RULE
+			spark:SetRotation(0)
+		end
+		UpdateShown()
+	end)
 end
 
 local CAST_EVENTS = {

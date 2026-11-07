@@ -24,6 +24,7 @@ ns.Layout = {
 	orbQuad = 160, -- size of every orb texture
 	orbRadius = 53.5, -- power orb, inside the cast ring
 	comboQuad = 108, -- size of the combo point textures, which sit on the orb's inner edge
+	manaSparkQuad = 128, -- size of the spark's texture, with margin for rotating it
 
 	barQuadHeight = 40,
 
@@ -137,7 +138,6 @@ ns.Colors = {
 	channel = { 0.35, 0.85, 0.75 },
 	swing = { 0.60, 0.60, 0.60 },
 	manaRule = { 1.00, 0.72, 0.20 }, -- the spark during the five second rule
-	manaTick = { 0.80, 0.95, 1.00 }, -- the spark between regular mana ticks
 	-- One per combo point, in the order they're earned.
 	combo = {
 		{ 1.00, 0.88, 0.10 },
