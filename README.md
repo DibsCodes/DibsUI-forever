@@ -63,6 +63,10 @@ Rage idles at 0, and other power types idle at full. Casts always show at 100%, 
 **Clicks**
 - Left-click a bar to target that unit, and right-click for its menu
 
+**Minimap button**
+- Click it to open or close the settings, and drag it to move it around the minimap's edge
+- Can be hidden in the settings
+
 ## Installation
 
 Copy the `DibsUI` folder into your game's `_forever_/Interface/AddOns/` folder, then restart the game or type `/reload`.
@@ -71,25 +75,48 @@ The other files in this repository aren't needed in-game.
 
 ## Settings
 
-Type `/dibsui` to open the settings window.
+Type `/dui` or `/dibsui`, or click the minimap button, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns.
+
+**Show minimap button**, at the top of the window, turns the minimap button on or off.
+
+The options are on the **Look and feel** tab.
+
+**Frames**
 
 | Setting | What it does |
 |---|---|
-| Lock position | Uncheck it to show a drag handle and move the frames. Bars don't respond to clicks until you lock it again. |
+| Lock position | Switch it off to show a drag handle and move the frames. Bars don't respond to clicks until you lock it again. |
 | Show target of target | Turns the target of target bar on or off. |
-| Scale | Scales everything from 0.50 to 2.00. Use the slider, or type an exact value and press Enter. |
-| Width | Sets the length of the player and target bars from 0.50 to 2.00. Use the slider, or type an exact value and press Enter. |
-| Pet and target of target width | Sets the length of both of those bars from 0.50 to 2.00. Use the slider, or type an exact value and press Enter. |
+| Scale | Scales everything from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
+| Width | Sets the length of the player and target bars from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
+| Pet and target of target width | Sets the length of both of those bars from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
+
+**Position**
+
+| Setting | What it does |
+|---|---|
 | Center horizontally | Centers the orb on the screen, keeping its height. The pet bar doesn't change where the center is. |
 | Up, Down, Left, Right | Moves the frames one screen pixel. These and Center work whether or not the position is locked. |
 
-Settings are saved per account, and can't be changed during combat.
+**Text**
+
+Pick a text field, such as the target's name or the orb's power, then change its look:
+
+| Setting | What it does |
+|---|---|
+| Font | The game's fonts, plus any fonts from addons that use LibSharedMedia. Each one is shown in its own typeface. |
+| Size | From 6 to 40. |
+| Custom color | Switch it on and click the swatch to pick a color. Switched off, the field keeps its usual color, such as a class or difficulty color. In name and level fields, the level stays yellow. |
+| Reset this text | Puts the field's font, size and color back to their defaults. |
+| Use font for all text | Gives every field the font of the one you've picked, leaving sizes and colors alone. |
+
+Settings are saved per account. Frame and position settings can't be changed during combat, but text and minimap settings can.
 
 ## Status
 
 Early development, for interface version 16001.
 
-So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points and real spell costs, still needs checking in-game.
+So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs and how the settings window looks in the live game, still needs checking in-game.
 
 ## Known limitations
 
@@ -99,6 +126,7 @@ So far DibsUI has been tested in the UIForever simulator and with offline checks
 - Only the main frames are kept on screen when dragging, so the pet and target of target bars can go past the screen's edges
 - The target of target bar still shows when you target yourself
 - The mana spark won't start for a spell whose cost is a secret value, and may start for a free cast from a proc like Clearcasting
+- Names are cut short to fit their bar, so a larger font size shows less of a long name
 - Fills start outside the orb's ring, so a nearly empty health bar looks slightly fuller than it is
 - If health and power are both secret values out of combat, only health can affect opacity
 

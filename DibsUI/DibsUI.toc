@@ -10,4 +10,5 @@ Position.lua
 Bars.lua
 Orb.lua
 Opacity.lua
+MinimapButton.lua
 Config.lua

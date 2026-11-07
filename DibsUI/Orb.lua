@@ -32,7 +32,7 @@ local function CreatePowerOrb(orb)
 	ns.CreateArt(glass, "ARTWORK", "OrbGlass"):SetAllPoints()
 
 	local valueSpec = ns.Text.orbPower
-	local value = ns.CreateText(glass, valueSpec)
+	local value = ns.CreateText(glass, "orbPower")
 	value:SetPoint("CENTER", glass, "CENTER", valueSpec.x, valueSpec.y)
 
 	-- Power can be secret. It only goes into the widgets, as with the bars.
@@ -224,10 +224,10 @@ local function CreateCastInfo(orb)
 	mask:SetAllPoints(icon)
 	icon:AddMaskTexture(mask)
 
-	local name = ns.CreateText(info, nameSpec)
+	local name = ns.CreateText(info, "castName")
 	name:SetPoint("LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
 
-	local timeText = ns.CreateText(info, timeSpec)
+	local timeText = ns.CreateText(info, "castTime")
 	timeText:SetPoint("CENTER", orb, "CENTER", timeSpec.x, timeSpec.y)
 
 	local startMS, endMS, countsDown

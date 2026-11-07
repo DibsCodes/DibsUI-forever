@@ -57,9 +57,9 @@ ns.Layout = {
 	},
 }
 
--- Every text field's size and offset. The comment says what each offset is measured from.
+-- Every text field's default size and offset. The comment says what each offset is measured from.
 ns.Text = {
-	font = "Fonts\\FRIZQT__.ttf",
+	font = "Fonts\\FRIZQT__.TTF",
 	outline = "OUTLINE",
 
 	orbPower = { size = 28, x = 0, y = 0 }, -- CENTER of the orb
@@ -86,19 +86,167 @@ ns.Text = {
 	castTime = { size = 12, x = 0, y = -105 }, -- CENTER of the text, from the orb CENTER
 
 	moverLabel = { size = 14, x = 0, y = -6 }, -- TOP of the text to the TOP of the drag handle
-
-	configTitle = { size = 13 },
-	configLabel = { size = 13 },
-	configValue = { size = 12 },
-	configRange = { size = 10 },
 }
 
-function ns.CreateText(parent, spec)
+-- The text fields whose font, size and color can be changed in the settings, grouped as they're listed there.
+-- defaultColor describes the color a field has until a custom one is chosen.
+ns.TextGroups = {
+	{ label = "Player", fields = {
+		{ key = "playerName", label = "Name and level", defaultColor = "Class color, with a yellow level" },
+		{ key = "playerHealth", label = "Health", defaultColor = "White" },
+		{ key = "playerDeficit", label = "Missing health", defaultColor = "White" },
+	} },
+	{ label = "Pet", fields = {
+		{ key = "petName", label = "Name and level", defaultColor = "White, with a yellow level" },
+		{ key = "petHealth", label = "Health", defaultColor = "White" },
+	} },
+	{ label = "Target", fields = {
+		{ key = "targetName", label = "Name", defaultColor = "Class or reaction color" },
+		{ key = "targetLevel", label = "Level", defaultColor = "Difficulty color" },
+		{ key = "targetPercent", label = "Health percent", defaultColor = "White" },
+		{ key = "targetHealth", label = "Health", defaultColor = "White" },
+		{ key = "targetPower", label = "Power", defaultColor = "White" },
+	} },
+	{ label = "Target of target", fields = {
+		{ key = "totName", label = "Name", defaultColor = "Class or reaction color" },
+		{ key = "totLevel", label = "Level", defaultColor = "Difficulty color" },
+	} },
+	{ label = "Orb", fields = {
+		{ key = "orbPower", label = "Power", defaultColor = "White" },
+	} },
+	{ label = "Cast", fields = {
+		{ key = "castName", label = "Spell name", defaultColor = "White" },
+		{ key = "castTime", label = "Time", defaultColor = "White" },
+	} },
+}
+
+ns.TextFields = {}
+for _, group in ipairs(ns.TextGroups) do
+	for _, field in ipairs(group.fields) do
+		field.group = group.label
+		ns.TextFields[field.key] = field
+	end
+end
+
+-- The game's own fonts. Only the ones this client can load are offered.
+local GAME_FONTS = {
+	{ name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
+	{ name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
+	{ name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
+	{ name = "Skurri", path = "Fonts\\SKURRI.TTF" },
+	{ name = "2002", path = "Fonts\\2002.TTF" },
+	{ name = "Page Text", path = "Fonts\\K_PAGETEXT.TTF" },
+	{ name = "Damage", path = "Fonts\\K_DAMAGE.TTF" },
+}
+
+local fontProbe = UIParent:CreateFontString()
+
+local function CanLoadFont(path)
+	return fontProbe:SetFont(path, 12, "") ~= false
+end
+
+-- The game's fonts, then any from LibSharedMedia, which other addons can register at any time.
+function ns.GetFonts()
+	local fonts, seen = {}, {}
+	local function Add(name, path)
+		local id = path:upper()
+		if not seen[id] and CanLoadFont(path) then
+			seen[id] = true
+			fonts[#fonts + 1] = { name = name, path = path }
+		end
+	end
+	for _, font in ipairs(GAME_FONTS) do
+		Add(font.name, font.path)
+	end
+	local media = LibStub and LibStub("LibSharedMedia-3.0", true)
+	if media then
+		for _, name in ipairs(media:List("font")) do
+			local path = media:Fetch("font", name, true)
+			if type(path) == "string" then
+				Add(name, path)
+			end
+		end
+	end
+	return fonts
+end
+
+-- Font strings by field key, so a change in the settings reaches every copy of that field.
+local styledTexts = {}
+
+-- The custom style saved for a field, or nil.
+function ns.GetTextStyle(key)
+	return ns.db.text[key]
+end
+
+local function ApplyTextColor(text)
+	local style = text.styleKey and ns.db.text[text.styleKey]
+	local color = style and style.color
+	if color then
+		text:SetTextColor(color[1], color[2], color[3])
+	else
+		text:SetTextColor(text.defaultR, text.defaultG, text.defaultB)
+	end
+end
+
+local function ApplyTextStyle(text)
+	local style = text.styleKey and ns.db.text[text.styleKey]
+	local size = style and style.size or ns.Text[text.styleKey].size
+	-- A font that's gone, such as one from a LibSharedMedia addon that's been removed, falls back to the default.
+	if not (style and style.font and text:SetFont(style.font, size, ns.Text.outline)) then
+		text:SetFont(ns.Text.font, size, ns.Text.outline)
+	end
+	ApplyTextColor(text)
+end
+
+-- key names the field in ns.Text, which gives its default size.
+function ns.CreateText(parent, key)
 	local text = parent:CreateFontString(nil, "OVERLAY")
-	text:SetFont(ns.Text.font, spec.size, ns.Text.outline)
-	text:SetTextColor(1, 1, 1)
 	text:SetWordWrap(false)
+	text.styleKey = key
+	text.defaultR, text.defaultG, text.defaultB = 1, 1, 1
+	if ns.TextFields[key] then
+		styledTexts[key] = styledTexts[key] or {}
+		table.insert(styledTexts[key], text)
+		ApplyTextStyle(text)
+	else
+		text:SetFont(ns.Text.font, ns.Text[key].size, ns.Text.outline)
+		text:SetTextColor(1, 1, 1)
+	end
 	return text
+end
+
+-- The color a field shows by default, such as a class color. A custom color in the settings takes its place.
+-- The color can come straight from the game, so it's stored and passed on without being looked at.
+function ns.SetTextColor(text, r, g, b)
+	text.defaultR, text.defaultG, text.defaultB = r, g, b
+	ApplyTextColor(text)
+end
+
+-- The color a field is showing by default right now, as the starting point for a custom one. White if
+-- it's never been shown, or if the game handed over a secret color, which mustn't be saved.
+function ns.GetTextDefaultColor(key)
+	local text = styledTexts[key] and styledTexts[key][1]
+	if not text or issecretvalue(text.defaultR) or issecretvalue(text.defaultG) or issecretvalue(text.defaultB) then
+		return 1, 1, 1
+	end
+	return text.defaultR, text.defaultG, text.defaultB
+end
+
+-- Changes one part of a field's style: "font", "size" or "color". nil goes back to the default.
+function ns.SetTextStyle(key, part, value)
+	local styles = ns.db.text
+	local style = styles[key] or {}
+	style[part] = value
+	styles[key] = next(style) and style or nil
+	for _, text in ipairs(styledTexts[key] or {}) do
+		ApplyTextStyle(text)
+	end
+end
+
+function ns.ResetTextStyle(key)
+	for _, part in ipairs({ "font", "size", "color" }) do
+		ns.SetTextStyle(key, part, nil)
+	end
 end
 
 -- 999, 1.2k, 12k, 1.2m, 12m: Blizzard's documented rule for abbreviation breakpoints. The numbers
@@ -208,6 +356,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateOrb()
 			ns.CreateMover()
 			ns.CreateOpacity()
+			ns.CreateMinimapButton()
 		end
 	elseif event == "PLAYER_LOGIN" then
 		-- These are protected frames, so a /reload during combat has to wait for combat to end.

@@ -213,13 +213,13 @@ end
 
 local function CreatePlayerName(button)
 	local overlay = button.overlay
-	local name = ns.CreateText(overlay, ns.Text.playerName)
+	local name = ns.CreateText(overlay, "playerName")
 	PlaceName(name, button, ns.Text.playerName, 0)
 
 	local function Update()
 		local classColor = ns.GetUnitClassColor("player")
 		if classColor then
-			name:SetTextColor(classColor.r, classColor.g, classColor.b)
+			ns.SetTextColor(name, classColor.r, classColor.g, classColor.b)
 		end
 		name:SetFormattedText("%s |cffffff00%d|r", UnitName("player"), UnitEffectiveLevel("player"))
 	end
@@ -237,10 +237,10 @@ local function CreatePlayerHealth()
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
 
-	local deficit = ns.CreateText(button.overlay, ns.Text.playerDeficit)
+	local deficit = ns.CreateText(button.overlay, "playerDeficit")
 	deficit:SetPoint("LEFT", button.body, "LEFT", ns.Text.playerDeficit.x, ns.Text.playerDeficit.y)
 
-	local health = ns.CreateText(button.overlay, ns.Text.playerHealth)
+	local health = ns.CreateText(button.overlay, "playerHealth")
 	health:SetPoint("RIGHT", button.body, "RIGHT", ns.Text.playerHealth.x, ns.Text.playerHealth.y)
 
 	bar:RegisterUnitEvent("UNIT_HEALTH", "player")
@@ -265,7 +265,7 @@ end
 local function CreatePetName(button)
 	local overlay = button.overlay
 	local nameSpec = ns.Text.petName
-	local name = ns.CreateText(overlay, nameSpec)
+	local name = ns.CreateText(overlay, "petName")
 	name:SetPoint("BOTTOM", button.body, "TOP", nameSpec.x, nameSpec.y)
 
 	local iconSpec = ns.Text.petHappiness
@@ -296,7 +296,7 @@ local function CreatePetHealth()
 	SetBarColor(bar, color[1], color[2], color[3])
 
 	local textSpec = ns.Text.petHealth
-	local health = ns.CreateText(button.overlay, textSpec)
+	local health = ns.CreateText(button.overlay, "petHealth")
 	health:SetPoint("CENTER", button.body, "CENTER", textSpec.x, textSpec.y)
 	health:Hide()
 	button:HookScript("OnEnter", function() health:Show() end)
@@ -326,12 +326,12 @@ end
 local function UpdateTargetNameColor(name, unit)
 	local classColor = GetFriendlyClassColor(unit)
 	if classColor then
-		name:SetTextColor(classColor.r, classColor.g, classColor.b)
+		ns.SetTextColor(name, classColor.r, classColor.g, classColor.b)
 	elseif UnitIsFriend("player", unit) then
 		local r, g, b = UnitSelectionColor(unit)
-		name:SetTextColor(r, g, b)
+		ns.SetTextColor(name, r, g, b)
 	else
-		name:SetTextColor(1, 1, 1)
+		ns.SetTextColor(name, 1, 1, 1)
 	end
 end
 
@@ -340,17 +340,17 @@ local function UpdateTargetLevel(level, unit)
 	level:SetText(effectiveLevel > 0 and effectiveLevel or "??")
 	-- Grey, green, yellow, orange or red.
 	local color = GetDifficultyColor(C_PlayerInfo.GetContentDifficultyCreatureForPlayer(unit))
-	level:SetTextColor(color.r, color.g, color.b)
+	ns.SetTextColor(level, color.r, color.g, color.b)
 end
 
 local function CreateTargetName(button)
 	local overlay = button.overlay
 
-	local level = ns.CreateText(overlay, ns.Text.targetLevel)
+	local level = ns.CreateText(overlay, "targetLevel")
 	level:SetPoint("BOTTOMRIGHT", button.body, "TOPRIGHT", ns.Text.targetLevel.x, ns.Text.targetLevel.y)
 
 	-- Leaves room each side so a long name stays centred and clear of the level.
-	local name = ns.CreateText(overlay, ns.Text.targetName)
+	local name = ns.CreateText(overlay, "targetName")
 	PlaceName(name, button, ns.Text.targetName, 60)
 
 	overlay:RegisterUnitEvent("UNIT_NAME_UPDATE", "target")
@@ -456,15 +456,15 @@ local function CreateTargetBars(wing)
 
 	-- "70% - 1.3k": the amount sits at the bar's right edge and the percent rides on its left side.
 	local amountSpec = ns.Text.targetHealth
-	local amount = ns.CreateText(healthButton.overlay, amountSpec)
+	local amount = ns.CreateText(healthButton.overlay, "targetHealth")
 	amount:SetPoint("RIGHT", healthButton.body, "RIGHT", amountSpec.x, amountSpec.y)
 
 	local percentSpec = ns.Text.targetPercent
-	local percent = ns.CreateText(healthButton.overlay, percentSpec)
+	local percent = ns.CreateText(healthButton.overlay, "targetPercent")
 	percent:SetPoint("BOTTOMRIGHT", amount, "BOTTOMLEFT", percentSpec.x, percentSpec.y)
 
 	local powerSpec = ns.Text.targetPower
-	local powerAmount = ns.CreateText(powerButton.overlay, powerSpec)
+	local powerAmount = ns.CreateText(powerButton.overlay, "targetPower")
 	powerAmount:SetPoint("RIGHT", powerButton.body, "RIGHT", powerSpec.x, powerSpec.y)
 
 	CreateTargetName(healthButton)
@@ -514,11 +514,11 @@ local function CreateTargetOfTarget(wing)
 	local bar, body, overlay = button.bar, button.body, button.overlay
 
 	local levelSpec, nameSpec = ns.Text.totLevel, ns.Text.totName
-	local level = ns.CreateText(overlay, levelSpec)
+	local level = ns.CreateText(overlay, "totLevel")
 	level:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", levelSpec.x, levelSpec.y)
 
 	-- Target names can be long. This keeps them over the bar and clear of the level at any width.
-	local name = ns.CreateText(overlay, nameSpec)
+	local name = ns.CreateText(overlay, "totName")
 	name:SetPoint("BOTTOMLEFT", body, "TOPLEFT", nameSpec.x, nameSpec.y)
 	name:SetPoint("BOTTOMRIGHT", level, "BOTTOMLEFT", -3, 0)
 

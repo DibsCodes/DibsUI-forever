@@ -4,6 +4,7 @@ local Layout = ns.Layout
 
 ns.ScaleRange = { min = 0.5, max = 2, step = 0.05 }
 ns.WidthRange = { min = 0.5, max = 2, step = 0.05 }
+ns.TextSizeRange = { min = 6, max = 40, step = 1 }
 
 local DEFAULTS = {
 	locked = true,
@@ -11,6 +12,8 @@ local DEFAULTS = {
 	width = 1,
 	petWidth = 1,
 	showTargetOfTarget = true,
+	showMinimapButton = true,
+	minimapAngle = 225, -- degrees anticlockwise from 3 o'clock, so the lower left of the minimap
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
 	x = 0,
 	y = Layout.originY,
@@ -20,6 +23,31 @@ local root, mover
 
 local function Clamp(value, range)
 	return math.min(math.max(value, range.min), range.max)
+end
+
+-- Custom text styles by field key. Anything unknown or malformed is dropped rather than applied.
+local function CleanTextStyles(styles)
+	if type(styles) ~= "table" then
+		return {}
+	end
+	for key, style in pairs(styles) do
+		if not ns.TextFields[key] or type(style) ~= "table" then
+			styles[key] = nil
+		else
+			if type(style.font) ~= "string" then
+				style.font = nil
+			end
+			style.size = type(style.size) == "number" and Clamp(math.floor(style.size + 0.5), ns.TextSizeRange) or nil
+			local color = style.color
+			if type(color) ~= "table" or type(color[1]) ~= "number" or type(color[2]) ~= "number" or type(color[3]) ~= "number" then
+				style.color = nil
+			end
+			if not next(style) then
+				styles[key] = nil
+			end
+		end
+	end
+	return styles
 end
 
 function ns.LoadSettings()
@@ -32,6 +60,7 @@ function ns.LoadSettings()
 	DibsUIDB.scale = Clamp(DibsUIDB.scale, ns.ScaleRange)
 	DibsUIDB.width = Clamp(DibsUIDB.width, ns.WidthRange)
 	DibsUIDB.petWidth = Clamp(DibsUIDB.petWidth, ns.WidthRange)
+	DibsUIDB.text = CleanTextStyles(DibsUIDB.text)
 	ns.db = DibsUIDB
 end
 
@@ -118,7 +147,7 @@ function ns.CreateMover()
 	tint:SetVertexColor(0.15, 0.45, 1, 0.3)
 
 	local labelSpec = ns.Text.moverLabel
-	local label = ns.CreateText(mover, labelSpec)
+	local label = ns.CreateText(mover, "moverLabel")
 	label:SetPoint("TOP", mover, "TOP", labelSpec.x, labelSpec.y)
 	label:SetText("DibsUI: drag to move")
 
