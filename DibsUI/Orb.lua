@@ -12,6 +12,42 @@ local function CreateLayer(parent, level)
 	return frame
 end
 
+local TURN = 2 * math.pi
+local SURFACE_HEIGHT = 6.7 -- the surface texture's height, from generate_art.py
+
+-- How each kind of power looks in the orb. Flows are layers over the liquid that turn at their own
+-- speed, in turns per second. Negative speeds turn clockwise, the way the swirls curl.
+local LIQUIDS = {
+	MANA = {
+		texture = "OrbLiquidMana",
+		surface = { 0.60, 0.85, 1.00 },
+		flows = {
+			{ texture = "OrbFlow1", blend = "ADD", color = { 0.35, 0.65, 1.00 }, alpha = 0.55, speed = -1 / 14 },
+			{ texture = "OrbFlow2", blend = "ADD", color = { 0.55, 0.85, 1.00 }, alpha = 0.30, speed = -1 / 23 },
+		},
+	},
+	RAGE = {
+		texture = "OrbLiquidBlood",
+		surface = { 0.90, 0.30, 0.25 },
+		flows = {
+			{ texture = "OrbClots", blend = "BLEND", color = { 0.10, 0.00, 0.01 }, alpha = 0.45, speed = -1 / 60 },
+			{ texture = "OrbFlow2", blend = "ADD", color = { 0.75, 0.10, 0.08 }, alpha = 0.14, speed = -1 / 40 },
+		},
+	},
+}
+
+-- Every other power: grey liquid and a single flow, in the power's colour.
+local TINTED_LIQUID = {
+	texture = "OrbLiquid",
+	flows = {
+		{ texture = "OrbFlow1", blend = "ADD", alpha = 0.30, speed = -1 / 18 },
+	},
+}
+
+local function Lighten(r, g, b)
+	return r + (1 - r) * 0.5, g + (1 - g) * 0.5, b + (1 - b) * 0.5
+end
+
 local function CreatePowerOrb(orb)
 	local fill = CreateFrame("StatusBar", nil, orb)
 	fill:SetSize(Layout.orbRadius * 2, Layout.orbRadius * 2)
@@ -19,14 +55,85 @@ local function CreatePowerOrb(orb)
 	fill:SetFrameLevel(orb:GetFrameLevel() + 1)
 	fill:SetOrientation("VERTICAL")
 	fill:SetFillStyle(Enum.StatusBarFillStyle.StandardNoRangeFill)
-	fill:SetStatusBarTexture(ns.Media("Flat"))
+	fill:SetStatusBarTexture(ns.Media("OrbLiquid"))
+	local liquid = fill:GetStatusBarTexture()
 
-	-- A flat fill clipped by Blizzard's round mask, so the level rises inside the circle.
+	-- Everything is clipped by Blizzard's round mask, so the level rises inside the circle.
 	-- The sphere shading lives on the glass layer above.
-	local mask = fill:CreateMaskTexture()
-	mask:SetAtlas("CircleMask")
-	mask:SetAllPoints()
-	fill:GetStatusBarTexture():AddMaskTexture(mask)
+	local circle = fill:CreateMaskTexture()
+	circle:SetAtlas("CircleMask")
+	circle:SetAllPoints()
+	liquid:AddMaskTexture(circle)
+
+	-- The flows cover the whole orb and turn, so this second mask cuts them off at the liquid's top
+	-- edge. It's anchored to the fill rather than sized from the power, which can be secret.
+	local level = fill:CreateMaskTexture()
+	level:SetTexture(ns.Media("Flat"), "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	level:SetPoint("TOPLEFT", liquid, "TOPLEFT")
+	level:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT")
+
+	local flows = {}
+	for i = 1, 2 do
+		local flow = ns.CreateArt(fill, "OVERLAY", "OrbFlow1")
+		flow:SetDrawLayer("OVERLAY", i)
+		flow:SetAllPoints()
+		flow:AddMaskTexture(circle)
+		flow:AddMaskTexture(level)
+		flow.angle = 0
+		flows[i] = flow
+	end
+
+	local surface = ns.CreateArt(fill, "OVERLAY", "OrbSurface")
+	surface:SetDrawLayer("OVERLAY", 3)
+	surface:SetBlendMode("ADD")
+	surface:SetSize(Layout.orbRadius * 2, SURFACE_HEIGHT)
+	surface:SetPoint("CENTER", liquid, "TOP")
+	surface:AddMaskTexture(circle)
+
+	fill:SetScript("OnUpdate", function(_, elapsed)
+		for _, flow in ipairs(flows) do
+			if flow.speed then
+				flow.angle = (flow.angle + flow.speed * TURN * elapsed) % TURN
+				flow:SetRotation(flow.angle)
+			end
+		end
+	end)
+
+	local shownToken
+	local function ShowLiquid(powerToken)
+		if powerToken == shownToken then
+			return
+		end
+		shownToken = powerToken
+		local style = LIQUIDS[powerToken]
+		local r, g, b = 1, 1, 1
+		if not style then
+			style = TINTED_LIQUID
+			r, g, b = ns.GetPowerColor(powerToken)
+		end
+		liquid:SetTexture(ns.Media(style.texture))
+		fill:SetStatusBarColor(r, g, b)
+		if style.surface then
+			surface:SetVertexColor(style.surface[1], style.surface[2], style.surface[3])
+		else
+			surface:SetVertexColor(Lighten(r, g, b))
+		end
+		for i, flow in ipairs(flows) do
+			local spec = style.flows[i]
+			flow:SetShown(spec ~= nil)
+			flow.speed = spec and spec.speed
+			if spec then
+				flow:SetTexture(ns.Media(spec.texture))
+				flow:SetBlendMode(spec.blend)
+				if spec.color then
+					flow:SetVertexColor(spec.color[1], spec.color[2], spec.color[3], spec.alpha)
+				else
+					local fr, fg, fb = Lighten(r, g, b)
+					flow:SetVertexColor(fr, fg, fb, spec.alpha)
+				end
+			end
+		end
+	end
 
 	local glass = CreateLayer(orb, orb:GetFrameLevel() + 2)
 	ns.CreateArt(glass, "ARTWORK", "OrbGlass"):SetAllPoints()
@@ -39,7 +146,7 @@ local function CreatePowerOrb(orb)
 		if not powerType then
 			return
 		end
-		fill:SetStatusBarColor(ns.GetPowerColor(powerToken))
+		ShowLiquid(powerToken)
 		fill:SetMinMaxValues(0, UnitPowerMax("player", powerType))
 		fill:SetValue(UnitPower("player", powerType), interpolation)
 		ns.ShowValue(value, "player", powerType)

@@ -32,7 +32,9 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Can be turned off in the settings
 
 **Orb (center)**
-- Fills from the bottom with your power, colored by power type, with the amount in the middle
+- Fills from the bottom with your power, with the amount in the middle
+- Mana is a deep blue liquid that slowly swirls, and rage is thick, dark blood. Other power types are a liquid in their own color
+- A thin glowing line marks the top of the liquid
 - Numbers are shortened: `999`, `1.2k`, `12k`, `1.2m`
 - Every text on the bars and orb can be changed or turned off in the settings
 
