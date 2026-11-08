@@ -5,18 +5,26 @@ local Layout = ns.Layout
 ns.ScaleRange = { min = 0.5, max = 2, step = 0.05 }
 ns.WidthRange = { min = 0.5, max = 2, step = 0.05 }
 ns.TextSizeRange = { min = 6, max = 40, step = 1 }
+ns.TextOffsetRange = { min = -100, max = 100, step = 1 }
 
-local DEFAULTS = {
+ns.DEFAULT_PROFILE = "Default"
+
+-- Settings kept in each profile.
+local PROFILE_DEFAULTS = {
 	locked = true,
 	scale = 1,
 	width = 1,
 	petWidth = 1,
 	showTargetOfTarget = true,
-	showMinimapButton = true,
-	minimapAngle = 225, -- degrees anticlockwise from 3 o'clock, so the lower left of the minimap
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
 	x = 0,
 	y = Layout.originY,
+}
+
+-- Settings shared by the whole account, whichever profile a character uses.
+local ACCOUNT_DEFAULTS = {
+	showMinimapButton = true,
+	minimapAngle = 225, -- degrees anticlockwise from 3 o'clock, so the lower left of the minimap
 }
 
 local root, mover
@@ -25,10 +33,26 @@ local function Clamp(value, range)
 	return math.min(math.max(value, range.min), range.max)
 end
 
+-- Text spots that were named after what they showed, before they were named after where they sit.
+local RENAMED_TEXT = {
+	playerDeficit = "playerLeft",
+	playerHealth = "playerRight",
+	petHealth = "petCenter",
+	targetHealth = "targetRight",
+	targetPower = "targetPowerRight",
+	orbPower = "orbCenter",
+}
+
 -- Custom text styles by field key. Anything unknown or malformed is dropped rather than applied.
 local function CleanTextStyles(styles)
 	if type(styles) ~= "table" then
 		return {}
+	end
+	for oldKey, newKey in pairs(RENAMED_TEXT) do
+		if styles[newKey] == nil then
+			styles[newKey] = styles[oldKey]
+		end
+		styles[oldKey] = nil
 	end
 	for key, style in pairs(styles) do
 		if not ns.TextFields[key] or type(style) ~= "table" then
@@ -38,9 +62,21 @@ local function CleanTextStyles(styles)
 				style.font = nil
 			end
 			style.size = type(style.size) == "number" and Clamp(math.floor(style.size + 0.5), ns.TextSizeRange) or nil
+			for _, part in ipairs({ "offsetX", "offsetY" }) do
+				local offset = style[part]
+				style[part] = type(offset) == "number" and Clamp(math.floor(offset + 0.5), ns.TextOffsetRange) or nil
+			end
 			local color = style.color
 			if type(color) ~= "table" or type(color[1]) ~= "number" or type(color[2]) ~= "number" or type(color[3]) ~= "number" then
 				style.color = nil
+			end
+			for _, part in ipairs({ "enabled", "mouseover" }) do
+				if type(style[part]) ~= "boolean" then
+					style[part] = nil
+				end
+			end
+			if not (ns.TextFields[key].values and ns.ValueFormatsByKey[style.format]) then
+				style.format = nil
 			end
 			if not next(style) then
 				styles[key] = nil
@@ -50,18 +86,62 @@ local function CleanTextStyles(styles)
 	return styles
 end
 
-function ns.LoadSettings()
-	DibsUIDB = DibsUIDB or {}
-	for key, value in pairs(DEFAULTS) do
-		if DibsUIDB[key] == nil then
-			DibsUIDB[key] = value
+local function FillDefaults(settings, defaults)
+	for key, value in pairs(defaults) do
+		if settings[key] == nil then
+			settings[key] = value
 		end
 	end
-	DibsUIDB.scale = Clamp(DibsUIDB.scale, ns.ScaleRange)
-	DibsUIDB.width = Clamp(DibsUIDB.width, ns.WidthRange)
-	DibsUIDB.petWidth = Clamp(DibsUIDB.petWidth, ns.WidthRange)
-	DibsUIDB.text = CleanTextStyles(DibsUIDB.text)
-	ns.db = DibsUIDB
+end
+
+-- Fills in what's missing and corrects what's out of range. Returns the profile.
+function ns.CleanProfile(profile)
+	FillDefaults(profile, PROFILE_DEFAULTS)
+	profile.scale = Clamp(profile.scale, ns.ScaleRange)
+	profile.width = Clamp(profile.width, ns.WidthRange)
+	profile.petWidth = Clamp(profile.petWidth, ns.WidthRange)
+	profile.text = CleanTextStyles(profile.text)
+	return profile
+end
+
+-- DibsUIDB holds the account's settings, every profile, and which profile each character uses.
+-- ns.db is the profile this character uses, and ns.account the shared settings.
+function ns.LoadSettings()
+	local saved = type(DibsUIDB) == "table" and DibsUIDB or {}
+	DibsUIDB = saved
+
+	-- Before profiles, one set of settings sat at the top level. It becomes the Default profile.
+	if type(saved.profiles) ~= "table" then
+		local profile = { text = saved.text }
+		saved.text = nil
+		for key in pairs(PROFILE_DEFAULTS) do
+			profile[key], saved[key] = saved[key], nil
+		end
+		saved.profiles = { [ns.DEFAULT_PROFILE] = profile }
+	end
+	for name, profile in pairs(saved.profiles) do
+		if type(name) ~= "string" or type(profile) ~= "table" then
+			saved.profiles[name] = nil
+		else
+			ns.CleanProfile(profile)
+		end
+	end
+	saved.profiles[ns.DEFAULT_PROFILE] = saved.profiles[ns.DEFAULT_PROFILE] or ns.CleanProfile({})
+	if type(saved.characters) ~= "table" then
+		saved.characters = {}
+	end
+	FillDefaults(saved, ACCOUNT_DEFAULTS)
+	ns.account = saved
+
+	-- A character whose profile has been deleted goes back to Default.
+	ns.characterKey = UnitName("player") .. " - " .. GetRealmName()
+	local name = saved.characters[ns.characterKey]
+	if not saved.profiles[name] then
+		name = ns.DEFAULT_PROFILE
+		saved.characters[ns.characterKey] = nil
+	end
+	ns.profileName = name
+	ns.db = saved.profiles[name]
 end
 
 -- How much longer the width setting makes a bar, in UI units. A negative value means shorter.
@@ -233,4 +313,17 @@ function ns.Nudge(x, y)
 		ns.db.y = ns.db.y + y * pixel
 		ApplyPlacement()
 	end
+end
+
+-- Puts every frame where the current profile says, after switching to another one. This moves and
+-- resizes the secure buttons, so it can't happen in combat.
+function ns.ApplyProfile()
+	FinishMoving()
+	root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
+	ApplyPlacement()
+	ns.UpdateTargetOfTargetShown()
+	ns.UpdateBarWidths()
+	LayoutMover()
+	UpdateMover()
+	ns.RefreshAllText()
 end

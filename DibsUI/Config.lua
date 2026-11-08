@@ -259,9 +259,9 @@ local function SameFont(a, b)
 end
 
 -- Layout options: these move secure frames, so they're locked in combat.
-local function BuildFrameOptions(page, column)
+local function BuildLookAndFeel(page, left, right)
 	local section = CreateSection(page, "Frames")
-	section:SetPoint("TOPLEFT", column, 0)
+	section:SetPoint("TOPLEFT", left, 0)
 
 	local lock = CreateToggleRow(page, "Lock position", ns.SetLocked)
 	lock:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -2)
@@ -282,7 +282,7 @@ local function BuildFrameOptions(page, column)
 	petWidth:SetPoint("TOPLEFT", width, "BOTTOMLEFT")
 
 	local positionSection = CreateSection(page, "Position")
-	positionSection:SetPoint("TOPLEFT", petWidth, "BOTTOMLEFT", 0, -10)
+	positionSection:SetPoint("TOPLEFT", right, 0)
 
 	-- Center at the left, level with Up, which sits above Down, with Left and Right either side of
 	-- Down at the right of the column.
@@ -298,13 +298,13 @@ local function BuildFrameOptions(page, column)
 	up:SetPoint("BOTTOM", down, "TOP", 0, 2)
 	up:SetScript("OnClick", function() ns.Nudge(0, 1) end)
 
-	local left = CreateButton(page, "Left", 52)
-	left:SetPoint("RIGHT", down, "LEFT", -2, 0)
-	left:SetScript("OnClick", function() ns.Nudge(-1, 0) end)
+	local leftButton = CreateButton(page, "Left", 52)
+	leftButton:SetPoint("RIGHT", down, "LEFT", -2, 0)
+	leftButton:SetScript("OnClick", function() ns.Nudge(-1, 0) end)
 
-	local right = CreateButton(page, "Right", 52)
-	right:SetPoint("LEFT", down, "RIGHT", 2, 0)
-	right:SetScript("OnClick", function() ns.Nudge(1, 0) end)
+	local rightButton = CreateButton(page, "Right", 52)
+	rightButton:SetPoint("LEFT", down, "RIGHT", 2, 0)
+	rightButton:SetScript("OnClick", function() ns.Nudge(1, 0) end)
 
 	local options = {}
 
@@ -316,41 +316,68 @@ local function BuildFrameOptions(page, column)
 		petWidth:Sync()
 	end
 
-	function options.SetEnabled(enabled)
-		for _, control in ipairs({ lock, showToT, scale, width, petWidth, center, up, down, left, right }) do
-			control:SetEnabled(enabled)
+	function options.SetCombatLocked(locked)
+		for _, control in ipairs({ lock, showToT, scale, width, petWidth, center, up, down, leftButton, rightButton }) do
+			control:SetEnabled(not locked)
 		end
 	end
 
 	return options
 end
 
--- Font, size and color for one text field at a time, picked from a dropdown.
-local function BuildTextOptions(page, column)
+-- One text spot at a time, picked from a dropdown: whether it shows, what it shows, and how it looks.
+-- None of it is protected, so it all works in combat.
+local function BuildTextOptions(page, left, right)
 	local selected = ns.TextGroups[1].fields[1]
+	local refresh
 
 	local section = CreateSection(page, "Text")
-	section:SetPoint("TOPLEFT", column, 0)
+	section:SetPoint("TOPLEFT", left, 0)
 
-	local fieldRow = CreateDropdownRow(page, "Field")
+	local fieldRow = CreateDropdownRow(page, "Text to edit")
 	fieldRow:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -2)
 
-	local fontRow = CreateDropdownRow(page, "Font")
-	fontRow:SetPoint("TOPLEFT", fieldRow, "BOTTOMLEFT")
+	local showRow = CreateToggleRow(page, "Show", function(checked)
+		ns.SetTextStyle(selected.key, "enabled", checked)
+	end)
+	showRow:SetPoint("TOPLEFT", fieldRow, "BOTTOMLEFT")
 
-	local function GetStyle()
-		return ns.GetTextStyle(selected.key) or {}
-	end
+	local mouseoverRow = CreateToggleRow(page, "Only on mouseover", function(checked)
+		ns.SetTextStyle(selected.key, "mouseover", checked)
+	end)
+	mouseoverRow:SetPoint("TOPLEFT", showRow, "BOTTOMLEFT")
+
+	local formatRow = CreateDropdownRow(page, "Shows")
+	formatRow:SetPoint("TOPLEFT", mouseoverRow, "BOTTOMLEFT")
+
+	local fontRow = CreateDropdownRow(page, "Font")
+	fontRow:SetPoint("TOPLEFT", formatRow, "BOTTOMLEFT")
 
 	local size = CreateSliderRow(page, "Size", ns.TextSizeRange, FormatSize,
-		function() return GetStyle().size or ns.Text[selected.key].size end,
+		function() return ns.GetTextOption(selected.key, "size") end,
 		function(value)
 			value = math.min(math.max(math.floor(value + 0.5), ns.TextSizeRange.min), ns.TextSizeRange.max)
-			ns.SetTextStyle(selected.key, "size", value ~= ns.Text[selected.key].size and value or nil)
+			ns.SetTextStyle(selected.key, "size", value)
 		end)
-	size:SetPoint("TOPLEFT", fontRow, "BOTTOMLEFT", 0, -2)
+	local sizeSection = CreateSection(page, "Size and position")
+	sizeSection:SetPoint("TOPLEFT", right, 0)
+	size:SetPoint("TOPLEFT", sizeSection, "BOTTOMLEFT", 0, -2)
 
-	local refresh
+	-- Moves the spot from where it normally sits, in UI units. Positive Y is up.
+	local function CreateOffsetRow(text, part)
+		return CreateSliderRow(page, text, ns.TextOffsetRange, FormatSize,
+			function() return ns.GetTextOption(selected.key, part) end,
+			function(value)
+				value = math.min(math.max(math.floor(value + 0.5), ns.TextOffsetRange.min), ns.TextOffsetRange.max)
+				ns.SetTextStyle(selected.key, part, value)
+			end)
+	end
+
+	local offsetX = CreateOffsetRow("X offset", "offsetX")
+	offsetX:SetPoint("TOPLEFT", size, "BOTTOMLEFT")
+
+	local offsetY = CreateOffsetRow("Y offset", "offsetY")
+	offsetY:SetPoint("TOPLEFT", offsetX, "BOTTOMLEFT")
 
 	local colorRow = CreateToggleRow(page, "Custom color", function(checked)
 		if checked then
@@ -360,7 +387,9 @@ local function BuildTextOptions(page, column)
 		end
 		refresh()
 	end)
-	colorRow:SetPoint("TOPLEFT", size, "BOTTOMLEFT", 0, -2)
+	local colorSection = CreateSection(page, "Color")
+	colorSection:SetPoint("TOPLEFT", offsetY, "BOTTOMLEFT", 0, -6)
+	colorRow:SetPoint("TOPLEFT", colorSection, "BOTTOMLEFT", 0, -2)
 
 	-- The template passes clicks on to its parent, which would flip the switch as well.
 	local swatch = CreateFrame("Button", nil, colorRow, "ColorSwatchTemplate")
@@ -376,7 +405,7 @@ local function BuildTextOptions(page, column)
 	hint:SetWidth(COLUMN_WIDTH)
 
 	local reset = CreateButton(page, "Reset this text", 134)
-	reset:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -16)
+	reset:SetPoint("TOPLEFT", fontRow, "BOTTOMLEFT", 0, -16)
 	reset:SetScript("OnClick", function()
 		ns.ResetTextStyle(selected.key)
 		refresh()
@@ -385,7 +414,7 @@ local function BuildTextOptions(page, column)
 	local fontToAll = CreateButton(page, "Use font for all text", 140)
 	fontToAll:SetPoint("LEFT", reset, "RIGHT", 6, 0)
 	fontToAll:SetScript("OnClick", function()
-		local font = GetStyle().font
+		local font = ns.GetTextOption(selected.key, "font")
 		for key in pairs(ns.TextFields) do
 			ns.SetTextStyle(key, "font", font)
 		end
@@ -394,7 +423,7 @@ local function BuildTextOptions(page, column)
 
 	local function OpenColorPicker()
 		local key = selected.key
-		local previous = GetStyle().color
+		local previous = ns.GetTextOption(key, "color")
 		local r, g, b = ns.GetTextDefaultColor(key)
 		if previous then
 			r, g, b = previous[1], previous[2], previous[3]
@@ -414,17 +443,26 @@ local function BuildTextOptions(page, column)
 	swatch:SetScript("OnClick", OpenColorPicker)
 
 	function refresh()
-		local style = GetStyle()
+		local key = selected.key
 		fieldRow.dropdown:GenerateMenu()
+		showRow.toggle:SetChecked(ns.GetTextOption(key, "enabled"))
+		mouseoverRow.toggle:SetChecked(ns.GetTextOption(key, "mouseover"))
+		-- A spot without values always shows the same thing, which the dropdown names while switched off.
+		formatRow.dropdown:SetDefaultText(selected.shows or "")
+		formatRow.dropdown:GenerateMenu()
+		formatRow.dropdown:SetEnabled(selected.values ~= nil)
 		fontRow.dropdown:GenerateMenu()
 		size:Sync()
-		colorRow.toggle:SetChecked(style.color ~= nil)
-		local r, g, b = ns.GetTextDefaultColor(selected.key)
-		if style.color then
-			r, g, b = style.color[1], style.color[2], style.color[3]
+		offsetX:Sync()
+		offsetY:Sync()
+		local color = ns.GetTextOption(key, "color")
+		colorRow.toggle:SetChecked(color ~= nil)
+		local r, g, b = ns.GetTextDefaultColor(key)
+		if color then
+			r, g, b = color[1], color[2], color[3]
 		end
 		swatch:SetColorRGB(r, g, b)
-		swatch:SetAlpha(style.color and 1 or 0.5)
+		swatch:SetAlpha(color and 1 or 0.5)
 		hint:SetText("Default color: " .. selected.defaultColor)
 	end
 
@@ -446,11 +484,29 @@ local function BuildTextOptions(page, column)
 		return selection.data.group .. ": " .. selection.data.label
 	end)
 
+	-- Each format lists an example beside its name, and the dropdown shows just the name once picked.
+	formatRow.dropdown:SetupMenu(function(_, root)
+		if not selected.values then
+			return
+		end
+		for _, format in ipairs(ns.ValueFormats) do
+			root:CreateRadio(format.label .. "  |cff9d9d9d" .. format.example .. "|r",
+				function() return ns.GetTextOption(selected.key, "format") == format.key end,
+				function()
+					ns.SetTextStyle(selected.key, "format", format.key)
+					refresh()
+				end, format)
+		end
+	end)
+	formatRow.dropdown:SetSelectionTranslator(function(selection)
+		return selection.data.label
+	end)
+
 	fontRow.dropdown:SetupMenu(function(_, root)
 		root:SetScrollMode(360)
 		for _, font in ipairs(ns.GetFonts()) do
 			local radio = root:CreateRadio(font.name,
-				function() return SameFont(GetStyle().font or ns.Text.font, font.path) end,
+				function() return SameFont(ns.GetTextOption(selected.key, "font") or ns.Text.font, font.path) end,
 				function()
 					ns.SetTextStyle(selected.key, "font", not SameFont(font.path, ns.Text.font) and font.path or nil)
 					refresh()
@@ -463,7 +519,7 @@ local function BuildTextOptions(page, column)
 	-- A saved font that can't be loaded any more shows as the default it falls back to.
 	fontRow.dropdown:SetDefaultText("Friz Quadrata")
 
-	return { Sync = refresh }
+	return { Sync = refresh, SetCombatLocked = function() end }
 end
 
 -- Sits above the tabs, since it applies to the whole addon rather than one tab.
@@ -473,48 +529,13 @@ local function CreateMinimapToggle(frame)
 	return row
 end
 
-local function BuildLookAndFeel(page)
-	local left = CreateFrame("Frame", nil, page)
-	left:SetSize(1, 1)
-	left:SetPoint("TOPLEFT", 16, -10)
-	local right = CreateFrame("Frame", nil, page)
-	right:SetSize(1, 1)
-	right:SetPoint("TOPLEFT", left, "TOPLEFT", COLUMN_WIDTH + COLUMN_GAP, 0)
-
-	local frameOptions = BuildFrameOptions(page, left)
-	local textOptions = BuildTextOptions(page, right)
-
-	return {
-		Sync = function()
-			frameOptions.Sync()
-			textOptions.Sync()
-		end,
-		SetCombatLocked = function(locked)
-			frameOptions.SetEnabled(not locked)
-		end,
-	}
-end
-
--- More tabs will join this one later.
-local TABS = {
-	{ label = "Look and feel", build = BuildLookAndFeel },
-}
-
-local function CreateConfig()
-	local frame = CreateFrame("Frame", "DibsUIConfig", UIParent, "DefaultPanelFlatTemplate")
-	frame:SetSize(WIDTH, HEIGHT)
-	frame:SetPoint("CENTER")
-	frame:SetFrameStrata("HIGH")
+-- A flat Blizzard panel with a title and close button.
+local function CreatePanel(name, parent, width, height, title)
+	local frame = CreateFrame("Frame", name, parent, "DefaultPanelFlatTemplate")
+	frame:SetSize(width, height)
 	frame:SetToplevel(true)
-	frame:SetClampedToScreen(true)
-	frame:SetMovable(true)
 	frame:EnableMouse(true)
-	frame:RegisterForDrag("LeftButton")
-	frame:SetScript("OnDragStart", frame.StartMoving)
-	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-	frame:SetDontSavePosition(true)
-	frame:SetTitle("DibsUI")
-	tinsert(UISpecialFrames, frame:GetName())
+	frame:SetTitle(title)
 
 	-- The flat background is built from atlas pieces, and the simulator is missing some of them. A plain
 	-- fill underneath keeps the window from being see-through if a client lacks them too.
@@ -528,6 +549,235 @@ local function CreateConfig()
 	end
 
 	CreateFrame("Button", nil, frame, "UIPanelCloseButtonDefaultAnchors")
+	return frame
+end
+
+local DIALOG_WIDTH, DIALOG_HEIGHT = 340, 200
+
+-- Asks for a name and which profile to start from. onCreated runs once the profile exists and is in use.
+local function CreateNewProfileDialog(config, onCreated)
+	local dialog = CreatePanel("DibsUINewProfile", config, DIALOG_WIDTH, DIALOG_HEIGHT, "New profile")
+	dialog:SetPoint("CENTER", config)
+	dialog:SetFrameStrata("DIALOG")
+	dialog:Hide()
+	tinsert(UISpecialFrames, dialog:GetName())
+
+	local content = CreateFrame("Frame", nil, dialog)
+	content:SetPoint("TOPLEFT", 20, -36)
+	content:SetPoint("BOTTOMRIGHT", -20, 16)
+
+	local nameLabel = CreateLabel(content, "GameFontHighlight", "Name")
+	nameLabel:SetPoint("TOPLEFT", 0, -8)
+
+	local nameBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+	nameBox:SetSize(DROPDOWN_WIDTH - 6, 22)
+	nameBox:SetPoint("TOPRIGHT", -3, -3)
+	nameBox:SetAutoFocus(false)
+	nameBox:SetMaxLetters(32)
+
+	local copyRow = CreateDropdownRow(content, "Copy from")
+	copyRow:SetPoint("TOPLEFT", 0, -34)
+	copyRow:SetWidth(DIALOG_WIDTH - 40)
+
+	local problem = CreateLabel(content, "GameFontNormalSmall", "")
+	problem:SetTextColor(1, 0.3, 0.3)
+	problem:SetPoint("TOPLEFT", copyRow, "BOTTOMLEFT", 0, -6)
+	problem:SetWidth(DIALOG_WIDTH - 40)
+
+	local create = CreateButton(content, "Create", 110)
+	create:SetPoint("BOTTOMRIGHT", content, "BOTTOM", -4, 0)
+
+	local cancel = CreateButton(content, "Cancel", 110)
+	cancel:SetPoint("BOTTOMLEFT", content, "BOTTOM", 4, 0)
+	cancel:SetScript("OnClick", function() dialog:Hide() end)
+
+	-- A profile name, or false to start from the default settings.
+	local copyFrom
+
+	copyRow.dropdown:SetupMenu(function(_, root)
+		root:SetScrollMode(300)
+		root:CreateRadio("Default settings", function() return copyFrom == false end, function() copyFrom = false end, false)
+		for _, name in ipairs(ns.GetProfileNames()) do
+			root:CreateRadio(name, function() return copyFrom == name end, function() copyFrom = name end, name)
+		end
+	end)
+
+	create:SetScript("OnClick", function()
+		local name, reason = ns.CreateProfile(nameBox:GetText(), copyFrom or nil)
+		if name then
+			dialog:Hide()
+			onCreated()
+		else
+			problem:SetText(reason)
+		end
+	end)
+
+	nameBox:SetScript("OnEnterPressed", function() create:Click() end)
+	nameBox:SetScript("OnEscapePressed", function() dialog:Hide() end)
+	nameBox:SetScript("OnTextChanged", function() problem:SetText("") end)
+
+	dialog:SetScript("OnShow", function()
+		copyFrom = ns.profileName
+		copyRow.dropdown:GenerateMenu()
+		nameBox:SetText("")
+		problem:SetText("")
+		nameBox:SetFocus()
+	end)
+	dialog:SetScript("OnHide", function()
+		nameBox:ClearFocus()
+	end)
+
+	return dialog
+end
+
+StaticPopupDialogs.DIBSUI_DELETE_PROFILE = {
+	text = "Delete the profile \"%s\"? Characters using it will go back to Default.",
+	button1 = DELETE,
+	button2 = CANCEL,
+	OnAccept = function(_, data)
+		if ns.DeleteProfile(data.name) then
+			data.onDeleted()
+		end
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	showAlert = true,
+}
+
+local PROFILE_ROW_HEIGHT = 28
+local PROFILE_LIST_HEIGHT = 224
+
+-- The profile in use, and every profile on the account in a list. Clicking one uses it on this
+-- character. Switching places the frames again, so all of this is locked in combat.
+local function BuildProfiles(page, left, right, context)
+	local isLocked = false
+
+	local section = CreateSection(page, "Profiles")
+	section:SetPoint("TOPLEFT", left, 0)
+
+	local currentLabel = CreateLabel(page, "GameFontHighlight", "Current profile")
+	currentLabel:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -6)
+
+	local current = CreateLabel(page, "GameFontNormalLarge", "")
+	current:SetPoint("TOPLEFT", currentLabel, "BOTTOMLEFT", 0, -6)
+	current:SetWidth(COLUMN_WIDTH)
+
+	local listBack = page:CreateTexture(nil, "BACKGROUND")
+	listBack:SetColorTexture(0, 0, 0, 0.3)
+
+	local list = CreateFrame("Frame", nil, page, "WowScrollBoxList")
+	list:SetPoint("TOPLEFT", current, "BOTTOMLEFT", 0, -14)
+	list:SetSize(COLUMN_WIDTH - 14, PROFILE_LIST_HEIGHT)
+	listBack:SetPoint("TOPLEFT", list, -2, 2)
+	listBack:SetPoint("BOTTOMRIGHT", list, 16, -2)
+
+	local scrollBar = CreateFrame("EventFrame", nil, page, "MinimalScrollBar")
+	scrollBar:SetPoint("TOPLEFT", list, "TOPRIGHT", 4, 0)
+	scrollBar:SetPoint("BOTTOMLEFT", list, "BOTTOMRIGHT", 4, 0)
+
+	local function Refresh()
+		current:SetText(ns.profileName)
+		list:SetDataProvider(CreateDataProvider(ns.GetProfileNames()))
+	end
+
+	local function OnProfileChanged()
+		context.SyncAll()
+	end
+
+	local view = CreateScrollBoxListLinearView()
+	view:SetElementExtent(PROFILE_ROW_HEIGHT)
+	view:SetElementInitializer("Button", function(row, name)
+		if not row.label then
+			local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+			highlight:SetAllPoints()
+			highlight:SetColorTexture(1, 1, 1, 0.08)
+
+			row.inUse = row:CreateTexture(nil, "BACKGROUND")
+			row.inUse:SetAllPoints()
+			row.inUse:SetColorTexture(TOGGLE_ON[1], TOGGLE_ON[2], TOGGLE_ON[3], 0.15)
+
+			row.label = CreateLabel(row, "GameFontHighlight", "")
+			row.label:SetPoint("LEFT", 10, 0)
+			row.label:SetPoint("RIGHT", -64, 0)
+
+			row.tag = CreateLabel(row, "GameFontNormalSmall", "In use")
+			row.tag:SetPoint("RIGHT", -10, 0)
+
+			row.delete = CreateFrame("Button", nil, row)
+			row.delete:SetSize(18, 18)
+			row.delete:SetPoint("RIGHT", -8, 0)
+			row.delete:SetNormalAtlas("common-icon-redx")
+			row.delete:SetHighlightAtlas("common-icon-redx", "ADD")
+		end
+
+		local inUse = name == ns.profileName
+		row.label:SetText(name)
+		row.inUse:SetShown(inUse)
+		row.tag:SetShown(inUse)
+		row.delete:SetShown(ns.CanDeleteProfile(name))
+
+		row:SetScript("OnClick", function()
+			if not isLocked and ns.UseProfile(name) then
+				PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+				OnProfileChanged()
+			end
+		end)
+		row.delete:SetScript("OnClick", function()
+			if not isLocked then
+				StaticPopup_Show("DIBSUI_DELETE_PROFILE", name, nil, { name = name, onDeleted = Refresh })
+			end
+		end)
+	end)
+	ScrollUtil.InitScrollBoxListWithScrollBar(list, scrollBar, view)
+	ScrollUtil.AddManagedScrollBarVisibilityBehavior(list, scrollBar)
+
+	local manageSection = CreateSection(page, "Manage")
+	manageSection:SetPoint("TOPLEFT", right, 0)
+
+	local dialog = CreateNewProfileDialog(context.window, OnProfileChanged)
+
+	local newProfile = CreateButton(page, "New profile", 150)
+	newProfile:SetPoint("TOPLEFT", manageSection, "BOTTOMLEFT", 0, -8)
+	newProfile:SetScript("OnClick", function() dialog:Show() end)
+
+	local help = CreateLabel(page, "GameFontHighlightSmall",
+		"Profiles are shared by every character on your account, and each character remembers which one it uses.\n\n"
+		.. "Click a profile to use it on this character.\n\n"
+		.. "The minimap button's settings are the same in every profile.")
+	help:SetPoint("TOPLEFT", newProfile, "BOTTOMLEFT", 0, -14)
+	help:SetWidth(COLUMN_WIDTH)
+	help:SetWordWrap(true)
+
+	return {
+		Sync = Refresh,
+		SetCombatLocked = function(locked)
+			isLocked = locked
+			newProfile:SetEnabled(not locked)
+			list:SetAlpha(locked and 0.5 or 1)
+			if locked then
+				dialog:Hide()
+			end
+		end,
+	}
+end
+
+local TABS = {
+	{ label = "Look and feel", build = BuildLookAndFeel },
+	{ label = "Text options", build = BuildTextOptions },
+	{ label = "Profiles", build = BuildProfiles },
+}
+local function CreateConfig()
+	local frame = CreatePanel("DibsUIConfig", UIParent, WIDTH, HEIGHT, "DibsUI")
+	frame:SetPoint("CENTER")
+	frame:SetFrameStrata("HIGH")
+	frame:SetClampedToScreen(true)
+	frame:SetMovable(true)
+	frame:RegisterForDrag("LeftButton")
+	frame:SetScript("OnDragStart", frame.StartMoving)
+	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+	frame:SetDontSavePosition(true)
+	tinsert(UISpecialFrames, frame:GetName())
 
 	local minimapToggle = CreateMinimapToggle(frame)
 	minimapToggle:SetPoint("TOPRIGHT", -14, -26)
@@ -537,6 +787,15 @@ local function CreateConfig()
 	inset:SetPoint("BOTTOMRIGHT", -8, 30)
 
 	local pages = {}
+
+	-- After a profile switch every tab shows the new profile's settings.
+	local context = { window = frame }
+	function context.SyncAll()
+		for _, page in ipairs(pages) do
+			page.options.Sync()
+		end
+	end
+
 	for i, info in ipairs(TABS) do
 		local tab = CreateFrame("Button", nil, frame, "PanelTopTabButtonTemplate")
 		tab:SetID(i)
@@ -554,17 +813,24 @@ local function CreateConfig()
 			PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
 		end)
 
+		-- Every tab lays out in two columns.
 		local page = CreateFrame("Frame", nil, inset)
 		page:SetAllPoints()
 		page:Hide()
-		page.options = info.build(page)
+		local left = CreateFrame("Frame", nil, page)
+		left:SetSize(1, 1)
+		left:SetPoint("TOPLEFT", 16, -10)
+		local right = CreateFrame("Frame", nil, page)
+		right:SetSize(1, 1)
+		right:SetPoint("TOPLEFT", left, "TOPLEFT", COLUMN_WIDTH + COLUMN_GAP, 0)
+		page.options = info.build(page, left, right, context)
 		pages[i] = page
 	end
 	PanelTemplates_SetNumTabs(frame, #TABS)
 	PanelTemplates_SetTab(frame, 1)
 	pages[1]:Show()
 
-	local combatNote = CreateLabel(frame, "GameFontDisableSmall", "Frame size and position can't be changed during combat")
+	local combatNote = CreateLabel(frame, "GameFontDisableSmall", "Frame size, position and profiles can't be changed during combat")
 	combatNote:SetPoint("BOTTOM", 0, 11)
 
 	local function SetCombatLocked(locked)
@@ -581,10 +847,8 @@ local function CreateConfig()
 	end)
 
 	frame:SetScript("OnShow", function()
-		minimapToggle.toggle:SetChecked(ns.db.showMinimapButton)
-		for _, page in ipairs(pages) do
-			page.options.Sync()
-		end
+		minimapToggle.toggle:SetChecked(ns.account.showMinimapButton)
+		context.SyncAll()
 		SetCombatLocked(InCombatLockdown())
 	end)
 

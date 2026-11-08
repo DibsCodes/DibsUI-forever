@@ -10,7 +10,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 
 **Player bar (left)**
 - Health fills from the orb outwards, with current health on the right
-- Health deficit on the left, hidden at full health
+- Missing health on the left, hidden at full health
 - Class-colored name and yellow level above the bar
 
 **Pet bar (far left)**
@@ -34,6 +34,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 **Orb (center)**
 - Fills from the bottom with your power, colored by power type, with the amount in the middle
 - Numbers are shortened: `999`, `1.2k`, `12k`, `1.2m`
+- Every text on the bars and orb can be changed or turned off in the settings
 
 **Combo points**
 - A five-segment ring on the inner edge of the orb, filling clockwise from 12 o'clock
@@ -75,11 +76,11 @@ The other files in this repository aren't needed in-game.
 
 ## Settings
 
-Type `/dui` or `/dibsui`, or click the minimap button, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns.
+Type `/dui` or `/dibsui`, or click the minimap button, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns, and has three tabs.
 
 **Show minimap button**, at the top of the window, turns the minimap button on or off.
 
-The options are on the **Look and feel** tab.
+### Look and feel
 
 **Frames**
 
@@ -98,25 +99,52 @@ The options are on the **Look and feel** tab.
 | Center horizontally | Centers the orb on the screen, keeping its height. The pet bar doesn't change where the center is. |
 | Up, Down, Left, Right | Moves the frames one screen pixel. These and Center work whether or not the position is locked. |
 
-**Text**
+### Text options
 
-Pick a text field, such as the target's name or the orb's power, then change its look:
+Pick a spot from **Text to edit**. Spots are named by where they sit, such as "Player bar: Left side" or "Orb: Center", then change it:
 
 | Setting | What it does |
 |---|---|
+| Show | Turns the spot on or off. |
+| Only on mouseover | Shows the spot only while your mouse is over its bar, or over the orb for the orb and cast text. |
+| Shows | What a health or power spot displays. Names, levels and cast text always show the same thing. |
 | Font | The game's fonts, plus any fonts from addons that use LibSharedMedia. Each one is shown in its own typeface. |
 | Size | From 6 to 40. |
-| Custom color | Switch it on and click the swatch to pick a color. Switched off, the field keeps its usual color, such as a class or difficulty color. In name and level fields, the level stays yellow. |
-| Reset this text | Puts the field's font, size and color back to their defaults. |
-| Use font for all text | Gives every field the font of the one you've picked, leaving sizes and colors alone. |
+| X offset, Y offset | Moves the spot from where it normally sits, from -100 to 100. Positive Y is up. |
+| Custom color | Switch it on and click the swatch to pick a color. Switched off, the spot keeps its usual color, such as a class or difficulty color. In name and level spots, the level stays yellow. |
+| Reset this text | Puts everything about the spot back to its defaults. |
+| Use font for all text | Gives every spot the font of the one you've picked, leaving everything else alone. |
 
-Settings are saved per account. Frame and position settings can't be changed during combat, but text and minimap settings can.
+A health or power spot can show:
+
+| Option | Example |
+|---|---|
+| Current | `13k` |
+| Current / max | `13k / 18k` |
+| Percent | `70%` |
+| Missing | `5k`, hidden when full |
+| Percent and current | `70% - 13k`, with the percent larger |
+
+The defaults are the layout above: missing health on the player bar's left side, percent and current on the target's, and the pet's current / max on mouseover.
+
+### Profiles
+
+Profiles are shared by every character on your account, and each character remembers which one it uses. Your settings start in the **Default** profile, and new characters use it too.
+
+- **Current profile** shows the one this character uses.
+- Click a profile in the list to use it.
+- **New profile** asks for a name and a profile to copy from, or starts from the default settings. The new profile is used straight away.
+- The red X deletes a profile, after you confirm. Default and the profile in use can't be deleted, and characters that used a deleted profile go back to Default.
+
+The minimap button's settings are the same in every profile.
+
+Frame, position and profile settings can't be changed during combat, but text and minimap settings can.
 
 ## Status
 
 Early development, for interface version 16001.
 
-So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs and how the settings window looks in the live game, still needs checking in-game.
+So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs, how the settings window looks in the live game, and profiles across real characters, still needs checking in-game.
 
 ## Known limitations
 

@@ -9,13 +9,6 @@ local IMMEDIATE = Enum.StatusBarInterpolation.Immediate
 
 local SLIDE_DURATION = 0.25
 
--- Alpha 1 below full health and 0 at full. Health can be secret, so addon code can't check for
--- full itself; the client evaluates this curve and hands the result straight to SetAlpha.
-local VISIBLE_BELOW_FULL = C_CurveUtil.CreateCurve()
-VISIBLE_BELOW_FULL:SetType(Enum.LuaCurveType.Step)
-VISIBLE_BELOW_FULL:AddPoint(0, 1)
-VISIBLE_BELOW_FULL:AddPoint(1, 0)
-
 -- Alpha 0 at empty and 1 above it, so an empty bar shows no sliver of its slanted cap.
 local VISIBLE_ABOVE_ZERO = C_CurveUtil.CreateCurve()
 VISIBLE_ABOVE_ZERO:SetType(Enum.LuaCurveType.Step)
@@ -166,7 +159,7 @@ end
 
 -- Name and level sit above the bar, so they're capped to its width rather than running under the orb.
 local function PlaceName(text, button, spec, reserved)
-	text:SetPoint("BOTTOM", button.body, "TOP", spec.x, spec.y)
+	ns.PlaceText(text, "BOTTOM", button.body, "TOP", spec.x, spec.y)
 	button.nameText = text
 	button.nameReserved = reserved
 end
@@ -213,7 +206,7 @@ end
 
 local function CreatePlayerName(button)
 	local overlay = button.overlay
-	local name = ns.CreateText(overlay, "playerName")
+	local name = ns.CreateText(overlay, "playerName", button)
 	PlaceName(name, button, ns.Text.playerName, 0)
 
 	local function Update()
@@ -237,11 +230,8 @@ local function CreatePlayerHealth()
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
 
-	local deficit = ns.CreateText(button.overlay, "playerDeficit")
-	deficit:SetPoint("LEFT", button.body, "LEFT", ns.Text.playerDeficit.x, ns.Text.playerDeficit.y)
-
-	local health = ns.CreateText(button.overlay, "playerHealth")
-	health:SetPoint("RIGHT", button.body, "RIGHT", ns.Text.playerHealth.x, ns.Text.playerHealth.y)
+	local left = ns.CreateValueText(button.overlay, "playerLeft", button.body, "LEFT", button)
+	local right = ns.CreateValueText(button.overlay, "playerRight", button.body, "RIGHT", button)
 
 	bar:RegisterUnitEvent("UNIT_HEALTH", "player")
 	bar:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
@@ -252,9 +242,8 @@ local function CreatePlayerHealth()
 	bar:SetScript("OnEvent", function(self, event)
 		local interpolation = event == "UNIT_HEALTH" and SMOOTH or IMMEDIATE
 		UpdateHealth(self, "player", interpolation)
-		deficit:SetText(ns.Shorten(UnitHealthMissing("player")))
-		deficit:SetAlpha(UnitHealthPercent("player", true, VISIBLE_BELOW_FULL))
-		health:SetText(ns.Shorten(UnitHealth("player")))
+		ns.ShowValue(left, "player")
+		ns.ShowValue(right, "player")
 	end)
 
 	CreatePlayerName(button)
@@ -265,8 +254,8 @@ end
 local function CreatePetName(button)
 	local overlay = button.overlay
 	local nameSpec = ns.Text.petName
-	local name = ns.CreateText(overlay, "petName")
-	name:SetPoint("BOTTOM", button.body, "TOP", nameSpec.x, nameSpec.y)
+	local name = ns.CreateText(overlay, "petName", button)
+	ns.PlaceText(name, "BOTTOM", button.body, "TOP", nameSpec.x, nameSpec.y)
 
 	local iconSpec = ns.Text.petHappiness
 	local happiness = CreateFrame("Frame", nil, overlay, "PetFrameHappinessTemplate")
@@ -295,12 +284,7 @@ local function CreatePetHealth()
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
 
-	local textSpec = ns.Text.petHealth
-	local health = ns.CreateText(button.overlay, "petHealth")
-	health:SetPoint("CENTER", button.body, "CENTER", textSpec.x, textSpec.y)
-	health:Hide()
-	button:HookScript("OnEnter", function() health:Show() end)
-	button:HookScript("OnLeave", function() health:Hide() end)
+	local health = ns.CreateValueText(button.overlay, "petCenter", button.body, "CENTER", button)
 
 	bar:RegisterUnitEvent("UNIT_HEALTH", "pet")
 	bar:RegisterUnitEvent("UNIT_MAXHEALTH", "pet")
@@ -311,12 +295,11 @@ local function CreatePetHealth()
 		local hasPet = UnitExists("pet")
 		button.body:SetShown(hasPet)
 		if not hasPet then
-			health:Hide()
 			return
 		end
 		local interpolation = event == "UNIT_HEALTH" and SMOOTH or IMMEDIATE
 		UpdateHealth(self, "pet", interpolation)
-		health:SetFormattedText("%s / %s", ns.Shorten(UnitHealth("pet")), ns.Shorten(UnitHealthMax("pet")))
+		ns.ShowValue(health, "pet")
 	end)
 
 	CreatePetName(button)
@@ -346,11 +329,11 @@ end
 local function CreateTargetName(button)
 	local overlay = button.overlay
 
-	local level = ns.CreateText(overlay, "targetLevel")
-	level:SetPoint("BOTTOMRIGHT", button.body, "TOPRIGHT", ns.Text.targetLevel.x, ns.Text.targetLevel.y)
+	local level = ns.CreateText(overlay, "targetLevel", button)
+	ns.PlaceText(level, "BOTTOMRIGHT", button.body, "TOPRIGHT", ns.Text.targetLevel.x, ns.Text.targetLevel.y)
 
 	-- Leaves room each side so a long name stays centred and clear of the level.
-	local name = ns.CreateText(overlay, "targetName")
+	local name = ns.CreateText(overlay, "targetName", button)
 	PlaceName(name, button, ns.Text.targetName, 60)
 
 	overlay:RegisterUnitEvent("UNIT_NAME_UPDATE", "target")
@@ -454,18 +437,8 @@ local function CreateTargetBars(wing)
 	RegisterUnitWatch(healthButton)
 	RegisterUnitWatch(powerButton)
 
-	-- "70% - 1.3k": the amount sits at the bar's right edge and the percent rides on its left side.
-	local amountSpec = ns.Text.targetHealth
-	local amount = ns.CreateText(healthButton.overlay, "targetHealth")
-	amount:SetPoint("RIGHT", healthButton.body, "RIGHT", amountSpec.x, amountSpec.y)
-
-	local percentSpec = ns.Text.targetPercent
-	local percent = ns.CreateText(healthButton.overlay, "targetPercent")
-	percent:SetPoint("BOTTOMRIGHT", amount, "BOTTOMLEFT", percentSpec.x, percentSpec.y)
-
-	local powerSpec = ns.Text.targetPower
-	local powerAmount = ns.CreateText(powerButton.overlay, "targetPower")
-	powerAmount:SetPoint("RIGHT", powerButton.body, "RIGHT", powerSpec.x, powerSpec.y)
+	local healthText = ns.CreateValueText(healthButton.overlay, "targetRight", healthButton.body, "RIGHT", healthButton)
+	local powerText = ns.CreateValueText(powerButton.overlay, "targetPowerRight", powerButton.body, "RIGHT", powerButton)
 
 	CreateTargetName(healthButton)
 
@@ -484,8 +457,7 @@ local function CreateTargetBars(wing)
 		local interpolation = event == "UNIT_HEALTH" and SMOOTH or IMMEDIATE
 		UpdateHealth(self, "target", interpolation)
 		UpdateTargetColor(self, "target")
-		percent:SetFormattedText("%.0f%%", UnitHealthPercent("target", true, CurveConstants.ScaleTo100))
-		amount:SetFormattedText("- %s", ns.Shorten(UnitHealth("target")))
+		ns.ShowValue(healthText, "target")
 	end)
 
 	local power = powerButton.bar
@@ -501,7 +473,7 @@ local function CreateTargetBars(wing)
 		end
 		local isPowerTick = event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT"
 		UpdatePower(self, "target", isPowerTick and SMOOTH or IMMEDIATE)
-		powerAmount:SetText(ns.Shorten(UnitPower("target")))
+		ns.ShowValue(powerText, "target", (UnitPowerType("target")))
 	end)
 end
 
@@ -514,13 +486,13 @@ local function CreateTargetOfTarget(wing)
 	local bar, body, overlay = button.bar, button.body, button.overlay
 
 	local levelSpec, nameSpec = ns.Text.totLevel, ns.Text.totName
-	local level = ns.CreateText(overlay, "totLevel")
-	level:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", levelSpec.x, levelSpec.y)
+	local level = ns.CreateText(overlay, "totLevel", button)
+	ns.PlaceText(level, "BOTTOMRIGHT", body, "TOPRIGHT", levelSpec.x, levelSpec.y)
 
 	-- Target names can be long. This keeps them over the bar and clear of the level at any width.
-	local name = ns.CreateText(overlay, "totName")
-	name:SetPoint("BOTTOMLEFT", body, "TOPLEFT", nameSpec.x, nameSpec.y)
-	name:SetPoint("BOTTOMRIGHT", level, "BOTTOMLEFT", -3, 0)
+	local name = ns.CreateText(overlay, "totName", button)
+	ns.PlaceText(name, "BOTTOMLEFT", body, "TOPLEFT", nameSpec.x, nameSpec.y)
+	ns.PlaceText(name, "BOTTOMRIGHT", level, "BOTTOMLEFT", -3, 0)
 
 	local function Update(interpolation)
 		local exists = UnitExists(unit)

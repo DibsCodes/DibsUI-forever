@@ -8,7 +8,7 @@ local button
 -- Round minimaps put the button on a circle. Square ones, which some minimap addons make, put it
 -- on the square's edge instead, so it doesn't float off a corner.
 local function UpdatePosition()
-	local angle = math.rad(ns.db.minimapAngle)
+	local angle = math.rad(ns.account.minimapAngle)
 	local x, y = math.cos(angle), math.sin(angle)
 	local radius = Minimap:GetWidth() / 2 + EDGE_OFFSET
 	if GetMinimapShape and GetMinimapShape() == "SQUARE" then
@@ -24,7 +24,7 @@ local function FollowCursor()
 	local centerX, centerY = Minimap:GetCenter()
 	local cursorX, cursorY = GetCursorPosition()
 	local scale = Minimap:GetEffectiveScale()
-	ns.db.minimapAngle = math.deg(math.atan2(cursorY / scale - centerY, cursorX / scale - centerX)) % 360
+	ns.account.minimapAngle = math.deg(math.atan2(cursorY / scale - centerY, cursorX / scale - centerX)) % 360
 	UpdatePosition()
 end
 
@@ -79,10 +79,10 @@ function ns.CreateMinimapButton()
 	end)
 
 	UpdatePosition()
-	button:SetShown(ns.db.showMinimapButton)
+	button:SetShown(ns.account.showMinimapButton)
 end
 
 function ns.SetMinimapButtonShown(shown)
-	ns.db.showMinimapButton = shown
+	ns.account.showMinimapButton = shown
 	button:SetShown(shown)
 end

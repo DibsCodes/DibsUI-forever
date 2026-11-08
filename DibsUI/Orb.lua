@@ -31,9 +31,7 @@ local function CreatePowerOrb(orb)
 	local glass = CreateLayer(orb, orb:GetFrameLevel() + 2)
 	ns.CreateArt(glass, "ARTWORK", "OrbGlass"):SetAllPoints()
 
-	local valueSpec = ns.Text.orbPower
-	local value = ns.CreateText(glass, "orbPower")
-	value:SetPoint("CENTER", glass, "CENTER", valueSpec.x, valueSpec.y)
+	local value = ns.CreateValueText(glass, "orbCenter", glass, "CENTER", orb)
 
 	-- Power can be secret. It only goes into the widgets, as with the bars.
 	local function Update(interpolation)
@@ -44,7 +42,7 @@ local function CreatePowerOrb(orb)
 		fill:SetStatusBarColor(ns.GetPowerColor(powerToken))
 		fill:SetMinMaxValues(0, UnitPowerMax("player", powerType))
 		fill:SetValue(UnitPower("player", powerType), interpolation)
-		value:SetText(ns.Shorten(UnitPower("player", powerType)))
+		ns.ShowValue(value, "player", powerType)
 	end
 
 	fill:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
@@ -224,11 +222,11 @@ local function CreateCastInfo(orb)
 	mask:SetAllPoints(icon)
 	icon:AddMaskTexture(mask)
 
-	local name = ns.CreateText(info, "castName")
-	name:SetPoint("LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
+	local name = ns.CreateText(info, "castName", orb)
+	ns.PlaceText(name, "LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
 
-	local timeText = ns.CreateText(info, "castTime")
-	timeText:SetPoint("CENTER", orb, "CENTER", timeSpec.x, timeSpec.y)
+	local timeText = ns.CreateText(info, "castTime", orb)
+	ns.PlaceText(timeText, "CENTER", orb, "CENTER", timeSpec.x, timeSpec.y)
 
 	local startMS, endMS, countsDown
 	local sinceUpdate = 0

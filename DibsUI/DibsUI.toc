@@ -6,7 +6,9 @@
 ## SavedVariables: DibsUIDB
 
 Core.lua
+Text.lua
 Position.lua
+Profiles.lua
 Bars.lua
 Orb.lua
 Opacity.lua
