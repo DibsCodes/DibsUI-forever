@@ -13,6 +13,7 @@ Profiles.lua
 Bars.lua
 Orb.lua
 Opacity.lua
+SpellDurations.lua
 Auras.lua
 MinimapButton.lua
 Config.lua

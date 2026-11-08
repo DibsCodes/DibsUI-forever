@@ -56,9 +56,11 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Replace Blizzard's buff frame with two frames: long buffs and short buffs
 - Long buffs last over 2 minutes or never expire, and short buffs are everything else
 - Both are built on Blizzard's own aura container, so they keep updating in combat, when addons can't read buffs themselves
-- DibsUI learns each buff's full duration whenever buffs can be read, and remembers it for every character on the account. A buff it hasn't seen before shows with the short buffs until the fight ends, then moves to the long buffs. After that it goes straight to the long buffs, even mid-fight
+- DibsUI ships a list of every long aura in the game client, taken from the client's own spell tables, so a long buff goes straight to the long buffs even the first time you get it mid-fight
+- It also learns each buff's real duration whenever buffs can be read, for every character on the account, which wins over the list, so talents and hotfixes count. A buff on neither shows with the short buffs until the fight ends, then moves
 - With one frame turned off, the other shows every buff
 - Long buffs can be placed anywhere, with a growth direction and frame width, or switched to List mode: one buff per line, longest at the top, with its name and time beside the icon
+- Weapon enchants, such as poisons and oils, show at the start of the long buffs
 - Short buffs sit above the player bar, as wide as it and clear of your name, filling left from the orb, then up
 - Hover a buff for its tooltip, and right-click it out of combat to cancel it
 - Icons can be skinned with Masque
@@ -222,8 +224,9 @@ The buff frames are newer still: the simulator can't show real buffs in Blizzard
 - At 0% opacity the bars are invisible but can still be clicked
 - Fills start outside the orb's ring, so a nearly empty health bar looks slightly fuller than it is
 - If health and power are both secret values out of combat, only health can affect opacity
-- A long buff DibsUI has never seen before shows with the short buffs until the fight ends, the first time you get it mid-fight
-- Weapon enchants are hidden along with Blizzard's buff frame
+- A long buff that's neither in the client's spell list nor seen before shows with the short buffs until the fight ends. The list is taken from build 1.60.1.70790 and needs regenerating for new builds
+- Weapon enchants only show in the long buffs, so with long buffs off and short buffs on they aren't shown anywhere
+- In List mode, a weapon enchant shows the weapon's name
 - In List mode, names longer than the space beside the icons run past the frame
 - The long buffs' drag handle is sized from the buffs you had the last time they could be read
 

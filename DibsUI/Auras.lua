@@ -295,6 +295,12 @@ local TEST_SHORT_BUFFS = {
 	{ name = "Sprint", icon = "Interface\\Icons\\Ability_Rogue_Sprint", duration = 15, remaining = 9 },
 }
 
+-- Weapon enchants show at the start of the long buffs, main hand first, as on Blizzard's buff frame.
+local TEST_ENCHANTS = {
+	{ name = "Instant Poison", icon = "Interface\\Icons\\Ability_Poisons", duration = 1800, remaining = 1420 },
+	{ name = "Brilliant Wizard Oil", icon = "Interface\\Icons\\INV_Potion_105", duration = 1800, remaining = 655 },
+}
+
 ns.auraTestMode = false
 
 -- Masque, when it's installed, can skin the icons. Each group is its own group in Masque's settings.
@@ -331,8 +337,9 @@ end
 -- Learning ------------------------------------------------------------------------------------
 
 -- Spell IDs of the buffs long enough to be long buffs. Blizzard's containers sort buffs by this list
--- themselves, even while buffs are secret, so a long buff lands in the long buffs mid-fight once
--- DibsUI has seen it once. A buff it hasn't seen yet shows with the short buffs until it can be read.
+-- themselves, even while buffs are secret. It starts from every long aura in the game client
+-- (SpellDurations.lua) and takes in the durations DibsUI sees, which win, so talents and hotfixes
+-- count. A buff on neither shows with the short buffs until it can be read.
 local longSpells = {}
 -- How many buffs each group showed when they could last be read, which sizes the frames' drag handles.
 local readableCounts = { long = 0, all = 0 }
@@ -343,10 +350,11 @@ end
 
 local function RebuildLongSpells()
 	wipe(longSpells)
+	for _, spellID in ipairs(ns.LongBuffSpells or {}) do
+		longSpells[spellID] = true
+	end
 	for spellID, duration in pairs(ns.account.learnedBuffs) do
-		if IsLongDuration(duration) then
-			longSpells[spellID] = true
-		end
+		longSpells[spellID] = IsLongDuration(duration) or nil
 	end
 end
 
@@ -415,19 +423,24 @@ end
 -- Test buffs start over when they run out, so test mode can be left on. Each group shows its own
 -- samples, plus the other group's while that one is off.
 local testStart
-local function ReadTestBuffs(groupKey)
-	local list, now = {}, GetTime()
-	local function Add(buffs)
-		for _, buff in ipairs(buffs) do
-			local expiration = math.huge
-			if buff.duration then
-				expiration = testStart + buff.remaining
-				while expiration <= now do
-					expiration = expiration + buff.duration
-				end
+local function AddTestBuffs(list, buffs)
+	local now = GetTime()
+	for _, buff in ipairs(buffs) do
+		local expiration = math.huge
+		if buff.duration then
+			expiration = testStart + buff.remaining
+			while expiration <= now do
+				expiration = expiration + buff.duration
 			end
-			list[#list + 1] = { name = buff.name, icon = buff.icon, duration = buff.duration, expiration = expiration, order = #list + 1 }
 		end
+		list[#list + 1] = { name = buff.name, icon = buff.icon, duration = buff.duration, expiration = expiration, order = #list + 1 }
+	end
+end
+
+local function ReadTestBuffs(groupKey)
+	local list = {}
+	local function Add(buffs)
+		AddTestBuffs(list, buffs)
 	end
 	local isLong = groupKey == "playerLongBuffs"
 	local otherKey = isLong and "playerShortBuffs" or "playerLongBuffs"
@@ -514,6 +527,16 @@ local function SetTimeStyle(parts, font, size, color)
 	})
 end
 
+-- Masque fits its skin to a button's size, but Blizzard's aura buttons can keep their size secret, which
+-- would leave Masque using the size it first saw. DibsUI tells Masque the size it set instead. Masque
+-- only takes it for a button already in the group; otherwise it would apply it to every button.
+local function TellMasqueSize(group, parts, reskin)
+	local masque = group.masque
+	if masque and masque.SetFrameSize and masque.Buttons and masque.Buttons[parts.button] and parts.size then
+		masque:SetFrameSize(parts.size, parts.size, parts.button, true, not reskin)
+	end
+end
+
 -- Standard mode puts the time under the icon. List mode puts the name level with the icon's top
 -- and the time level with its bottom, on whichever side the icon isn't.
 local function StyleParts(group, mode, parts)
@@ -522,6 +545,9 @@ local function StyleParts(group, mode, parts)
 	local style = isList and settings.list or settings
 	local button = parts.button
 	button:SetSize(style.iconSize, style.iconSize)
+	parts.size = style.iconSize
+	-- The reskin comes with the next refresh of every group.
+	TellMasqueSize(group, parts, false)
 	if IsMasqueSkinned(group) then
 		parts.border:Hide()
 	else
@@ -559,6 +585,7 @@ end
 local function AddToMasque(group, parts)
 	if group.masque then
 		group.masque:AddButton(parts.button, { Icon = parts.icon, Count = parts.count, Duration = false }, "Buff")
+		TellMasqueSize(group, parts, true)
 	end
 end
 
@@ -707,19 +734,51 @@ local function LayoutTestIcons(group, layout, count)
 	end
 end
 
-local function ConfigureContainer(container, layout)
+local ENCHANTS_BEFORE_BUFFS = 0
+
+-- Weapon enchants are their own group in the layout, ahead of the buffs, and the buffs carry on from
+-- them along the same line. The flow layout already leaves the spacing after each icon, so the
+-- groups need no gap of their own.
+local function ConfigureContainer(container, layout, hasEnchants)
 	container:SetFlowLayoutAxis(layout.vertical and FLOW_AXIS.vertical or FLOW_AXIS.horizontal)
 	container:SetFlowLayoutGrowthDirection(layout.signX > 0 and FLOW_DIRECTION.RIGHT or FLOW_DIRECTION.LEFT,
 		layout.signY > 0 and FLOW_DIRECTION.UP or FLOW_DIRECTION.DOWN)
 	container:SetFlowLayoutAnchorPoint(layout.anchor)
 	container:SetFlowLayoutPadding(0, 0, 0, layout.padY)
 	container:SetFlowLayoutMaximumLineSize(layout.lineSize)
-	container:SetAuraGroupLayout("buffs", {
+	local groupLayout = {
 		elementSpacing = layout.spacing,
 		lineSpacing = layout.spacing,
+		groupSpacing = 0,
+		groupLineSpacing = layout.spacing,
 		elementWidth = layout.width,
 		elementHeight = layout.height,
-	})
+	}
+	container:SetAuraGroupLayout("buffs", groupLayout)
+	if hasEnchants then
+		local placement = CustomAuraContainerItemEnchantmentPlacement
+		groupLayout.placement = placement and placement.BeforeAuraGroups or ENCHANTS_BEFORE_BUFFS
+		container:SetItemEnchantmentLayout(groupLayout)
+	end
+end
+
+-- How many weapons have a temporary enchant, such as a poison or an oil. Only sizes the drag handle.
+local function CountWeaponEnchants()
+	if not GetWeaponEnchantInfo then
+		return 0
+	end
+	local info = { pcall(GetWeaponEnchantInfo) }
+	if not info[1] then
+		return 0
+	end
+	local count = 0
+	-- After pcall's own result: main hand, off hand and ranged each start a group of four.
+	for _, position in ipairs({ 2, 6, 10 }) do
+		if not issecretvalue(info[position]) and info[position] == true then
+			count = count + 1
+		end
+	end
+	return count
 end
 
 -- Placement -----------------------------------------------------------------------------------------
@@ -773,6 +832,13 @@ end
 local function ShowTestIcons(group, mode, layout)
 	local list = ReadTestBuffs(group.key)
 	SortBuffs(list, mode == "list")
+	if group.key == "playerLongBuffs" then
+		local enchants = {}
+		AddTestBuffs(enchants, TEST_ENCHANTS)
+		for i = #enchants, 1, -1 do
+			table.insert(list, 1, enchants[i])
+		end
+	end
 	for i, data in ipairs(list) do
 		local parts = group.testIcons[i]
 		if not parts then
@@ -830,13 +896,17 @@ local function UpdateGroup(group)
 	else
 		HideTestIcons(group)
 		local container = group.containers[mode]
+		local hasEnchants = group.key == "playerLongBuffs"
 		if container then
-			ConfigureContainer(container, layout)
+			ConfigureContainer(container, layout, hasEnchants)
 			container:SetAuraGroupCandidateFilters("buffs", GetCandidateFilters(group.key))
 			container:ClearAllPoints()
 			container:SetPoint(layout.anchor, group.holder, layout.anchor)
 		end
 		count = GetReadableCount(group.key)
+		if hasEnchants and not AreAurasSecret() then
+			count = count + CountWeaponEnchants()
+		end
 	end
 	StyleContainerButtons(group)
 	SizeHolder(group, layout, count)
@@ -1018,6 +1088,21 @@ local function CreateContainer(group, mode)
 			InitContainerButton(group, mode, button)
 		end,
 	})
+	-- The long buffs also show weapon enchants: main hand, off hand and ranged. Blizzard fills them in
+	-- and cancels them on right-click, as with buffs. In list mode the name is the weapon's.
+	if group.key == "playerLongBuffs" then
+		local slots = AuraContainerItemEnchantmentSlot or { MainHand = 0, OffHand = 1, Ranged = 2 }
+		for _, slot in ipairs({ slots.MainHand, slots.OffHand, slots.Ranged }) do
+			local added, err = pcall(container.AddItemEnchantment, container, slot, {
+				initializeFrame = function(button)
+					InitContainerButton(group, mode, button)
+				end,
+			})
+			if not added then
+				geterrorhandler()(err)
+			end
+		end
+	end
 	group.containers[mode] = container
 end
 
@@ -1076,7 +1161,6 @@ local function CreateGroup(key, label, parent)
 end
 
 function ns.CreateAuraFrames()
-	ns.account.learnedBuffs = ns.CleanLearnedBuffs(ns.account.learnedBuffs)
 	RebuildLongSpells()
 
 	local long = CreateGroup("playerLongBuffs", "Player long buffs", UIParent)

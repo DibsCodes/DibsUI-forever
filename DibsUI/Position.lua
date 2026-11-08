@@ -143,6 +143,8 @@ function ns.LoadSettings()
 		saved.characters = {}
 	end
 	FillDefaults(saved, ACCOUNT_DEFAULTS)
+	-- The buffs DibsUI has learned the durations of, shared by every character.
+	saved.learnedBuffs = ns.CleanLearnedBuffs(saved.learnedBuffs)
 	ns.account = saved
 
 	-- A character whose profile has been deleted goes back to Default.
