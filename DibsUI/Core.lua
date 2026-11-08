@@ -181,8 +181,18 @@ local function HideBlizzardFrames()
 	PetFrame:SetParent(hiddenParent)
 
 	TargetFrame:SetParent(hiddenParent)
+end
 
+-- The orb shows casts, so Blizzard's cast bar stays off. Blizzard turns it back on whenever one of its
+-- own cast bars finishes, such as the one over the talent or crafting window or a vehicle's action bar,
+-- so it goes straight back off. It isn't a protected frame, so this doesn't have to wait for combat.
+local function HideCastBar()
 	PlayerCastingBarFrame:SetAndUpdateShowCastbar(false)
+	hooksecurefunc(PlayerCastingBarFrame, "SetAndUpdateShowCastbar", function(castBar, showCastbar)
+		if showCastbar then
+			castBar:SetAndUpdateShowCastbar(false)
+		end
+	end)
 end
 
 local events = CreateFrame("Frame")
@@ -201,6 +211,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateMinimapButton()
 		end
 	elseif event == "PLAYER_LOGIN" then
+		HideCastBar()
 		-- These are protected frames, so a /reload during combat has to wait for combat to end.
 		if InCombatLockdown() then
 			self:RegisterEvent("PLAYER_REGEN_ENABLED")
