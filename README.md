@@ -52,14 +52,20 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 
 **Opacity**
 
-| State | Opacity |
-|---|---|
-| In combat | 100% |
-| Out of combat, targeting an attackable unit | 60% |
-| Out of combat, with health below full, or power away from its idle level | 60% |
-| Otherwise, out of combat | 30% |
+Pick a mode in the settings. Smart, the default, follows what's happening:
 
-Rage idles at 0, and other power types idle at full. Casts always show at 100%, whatever the rest of the frame is doing.
+| State | Smart | Minimalist |
+|---|---|---|
+| In combat | 100% | 100% |
+| Out of combat, targeting an attackable unit | 60% | 60% |
+| Out of combat, with health below full, or power away from its idle level | 60% | 60% |
+| Otherwise, out of combat | 30% | Hidden |
+
+**Full** is always 100%, and **Manual** is always the opacity you set. Rage idles at 0, and other power types idle at full. Casts always show at 100%, whatever the mode.
+
+**Last names**
+- Can be switched on in the settings, to show "First Last" on the player, target and target of target
+- The last name is off-white and 20% smaller than the first, and the player's level follows it
 
 **Clicks**
 - Left-click a bar to target that unit, and right-click for its menu
@@ -91,6 +97,7 @@ Type `/dui` or `/dibsui`, or click the minimap button, to open the settings wind
 | Scale | Scales everything from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
 | Width | Sets the length of the player and target bars from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
 | Pet and target of target width | Sets the length of both of those bars from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
+| Show last names | Shows last names beside first names, smaller and off-white. |
 
 **Position**
 
@@ -98,6 +105,15 @@ Type `/dui` or `/dibsui`, or click the minimap button, to open the settings wind
 |---|---|
 | Center horizontally | Centers the orb on the screen, keeping its height. The pet bar doesn't change where the center is. |
 | Up, Down, Left, Right | Moves the frames one screen pixel. These and Center work whether or not the position is locked. |
+
+**Opacity**
+
+| Setting | What it does |
+|---|---|
+| Mode | Smart, Minimalist, Full or Manual, as described above. |
+| Manual opacity | The opacity Manual holds, from 0% to 100%. |
+
+Unlocked frames always show at 100%, so you can see them to move them.
 
 ### Text options
 
@@ -138,7 +154,7 @@ Profiles are shared by every character on your account, and each character remem
 
 The minimap button's settings are the same in every profile.
 
-Frame, position and profile settings can't be changed during combat, but text and minimap settings can.
+Frame, position and profile settings can't be changed during combat, but text, last name, opacity and minimap settings can.
 
 ## Status
 
@@ -154,7 +170,9 @@ So far DibsUI has been tested in the UIForever simulator and with offline checks
 - Only the main frames are kept on screen when dragging, so the pet and target of target bars can go past the screen's edges
 - The target of target bar still shows when you target yourself
 - The mana spark won't start for a spell whose cost is a secret value, and may start for a free cast from a proc like Clearcasting
-- Names are cut short to fit their bar, so a larger font size shows less of a long name
+- Names are cut short to fit their bar, so a larger font size or a last name shows less of a long name
+- When the game hides a name's details, such as in some instances, the name shows without its last name
+- At 0% opacity the bars are invisible but can still be clicked
 - Fills start outside the orb's ring, so a nearly empty health bar looks slightly fuller than it is
 - If health and power are both secret values out of combat, only health can affect opacity
 

@@ -22,6 +22,10 @@ local function FormatSize(value)
 	return string.format("%d", value)
 end
 
+local function FormatPercent(value)
+	return string.format("%d%%", value)
+end
+
 local function CreateLabel(parent, fontObject, text)
 	local label = parent:CreateFontString(nil, "OVERLAY", fontObject)
 	label:SetJustifyH("LEFT")
@@ -180,7 +184,7 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 	end, row)
 
 	input:SetScript("OnEnterPressed", function(self)
-		local value = tonumber(self:GetText())
+		local value = tonumber((self:GetText():gsub("%%", "")))
 		if value then
 			setValue(value)
 		end
@@ -269,9 +273,12 @@ local function BuildLookAndFeel(page, left, right)
 	local showToT = CreateToggleRow(page, "Show target of target", ns.SetTargetOfTargetShown)
 	showToT:SetPoint("TOPLEFT", lock, "BOTTOMLEFT")
 
+	local surnames = CreateToggleRow(page, "Show last names", ns.SetSurnamesShown)
+	surnames:SetPoint("TOPLEFT", showToT, "BOTTOMLEFT")
+
 	local scale = CreateSliderRow(page, "Scale", ns.ScaleRange, FormatScale,
 		function() return ns.db.scale end, ns.SetScale)
-	scale:SetPoint("TOPLEFT", showToT, "BOTTOMLEFT", 0, -2)
+	scale:SetPoint("TOPLEFT", surnames, "BOTTOMLEFT", 0, -2)
 
 	local width = CreateSliderRow(page, "Width", ns.WidthRange, FormatScale,
 		function() return ns.db.width end, ns.SetWidth)
@@ -306,11 +313,47 @@ local function BuildLookAndFeel(page, left, right)
 	rightButton:SetPoint("LEFT", down, "RIGHT", 2, 0)
 	rightButton:SetScript("OnClick", function() ns.Nudge(1, 0) end)
 
+	-- Opacity, under Position. None of it is protected, so it stays usable in combat.
+	local opacitySection = CreateSection(page, "Opacity")
+	opacitySection:SetPoint("TOPLEFT", positionSection, "BOTTOMLEFT", 0, -64)
+
+	local modeRow = CreateDropdownRow(page, "Mode")
+	modeRow:SetPoint("TOPLEFT", opacitySection, "BOTTOMLEFT", 0, -2)
+
+	local modeHint = CreateLabel(page, "GameFontDisableSmall", "")
+	modeHint:SetPoint("TOPLEFT", modeRow, "BOTTOMLEFT", 0, 0)
+	modeHint:SetWidth(COLUMN_WIDTH)
+
+	local manual = CreateSliderRow(page, "Manual opacity", { min = 0, max = 100, step = 5 }, FormatPercent,
+		function() return math.floor(ns.db.manualOpacity * 100 + 0.5) end,
+		function(value) ns.SetManualOpacity(value / 100) end)
+	manual:SetPoint("TOPLEFT", modeHint, "BOTTOMLEFT", 0, -4)
+
+	local function SyncOpacity()
+		modeRow.dropdown:GenerateMenu()
+		modeHint:SetText(ns.OpacityModesByKey[ns.db.opacityMode].description)
+		manual:Sync()
+		manual:SetEnabled(ns.db.opacityMode == "manual")
+	end
+
+	modeRow.dropdown:SetupMenu(function(_, root)
+		for _, mode in ipairs(ns.OpacityModes) do
+			root:CreateRadio(mode.label,
+				function() return ns.db.opacityMode == mode.key end,
+				function()
+					ns.SetOpacityMode(mode.key)
+					SyncOpacity()
+				end, mode)
+		end
+	end)
+
 	local options = {}
 
 	function options.Sync()
 		lock.toggle:SetChecked(ns.db.locked)
 		showToT.toggle:SetChecked(ns.db.showTargetOfTarget)
+		surnames.toggle:SetChecked(ns.db.showSurnames)
+		SyncOpacity()
 		scale:Sync()
 		width:Sync()
 		petWidth:Sync()

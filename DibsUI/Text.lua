@@ -146,12 +146,22 @@ local function SetFont(text, font, size)
 	end
 end
 
+-- A last name shows beside the first, smaller and off-white, whatever color the first name has.
+local SURNAME_SCALE = 0.8
+local SURNAME_COLOR = { 0.88, 0.87, 0.82 }
+local LEVEL_COLOR = { 1, 1, 0 }
+local NAME_GAP = 4
+
 local function ApplyTextStyle(text)
 	local key = text.styleKey
 	local font, size = ns.GetTextOption(key, "font"), ns.GetTextOption(key, "size")
 	SetFont(text, font, size)
 	if text.lead then
 		SetFont(text.lead, font, math.floor(size * ns.Text.lead.scale + 0.5))
+	end
+	if text.surname then
+		SetFont(text.surname, font, math.floor(size * SURNAME_SCALE + 0.5))
+		SetFont(text.level, font, size)
 	end
 	ApplyTextColor(text)
 end
@@ -175,6 +185,10 @@ local function UpdateVisibility(text)
 	text:SetShown(shown)
 	if text.lead then
 		text.lead:SetShown(shown and text.usesLead)
+	end
+	if text.surname then
+		text.surname:SetShown(shown and text.usesSurname)
+		text.level:SetShown(shown and text.usesSurname and text.levelValue ~= nil)
 	end
 	hoverTexts[text] = mouseover and ns.GetTextOption(key, "enabled") or nil
 	hoverWatcher:SetShown(next(hoverTexts) ~= nil)
@@ -213,22 +227,71 @@ end
 
 -- Places a text that always shows the same thing, adding the settings' offset. Each anchor is kept so
 -- a new offset can place it again, and they all move together, so a text held between two keeps its width.
+-- A name is placed by its box, which the name lays itself out in.
 function ns.PlaceText(text, point, relativeTo, relativePoint, x, y)
+	local region = text.box or text
 	text.anchors = text.anchors or {}
 	table.insert(text.anchors, { point, relativeTo, relativePoint, x, y })
-	text:SetPoint(point, relativeTo, relativePoint,
+	region:SetPoint(point, relativeTo, relativePoint,
 		x + ns.GetTextOption(text.styleKey, "offsetX"), y + ns.GetTextOption(text.styleKey, "offsetY"))
+end
+
+-- Lays a name out in its box: the plain name, or "First Last" with the level after when last names are
+-- on. Centring the pieces means measuring them, and text widths are secret while the text is, so a
+-- secret name keeps the plain layout without its last name. The first name shortens if the row won't fit.
+local function LayoutName(text)
+	local name, surname, level, box = text.firstName, text.lastName, text.levelValue, text.box
+	if not issecretvalue(name) and name == nil then
+		return
+	end
+	text:ClearAllPoints()
+	local useRow = ns.db.showSurnames and not issecretvalue(name) and not issecretvalue(surname)
+		and surname ~= nil and surname ~= ""
+	if useRow then
+		text:SetText(name)
+		text.surname:SetText(surname)
+		text.level:SetText(level)
+		local nameWidth, surnameWidth = text:GetUnboundedStringWidth(), text.surname:GetUnboundedStringWidth()
+		local levelWidth = level ~= nil and NAME_GAP + text.level:GetUnboundedStringWidth() or 0
+		local boxWidth = box:GetWidth()
+		if issecretvalue(nameWidth) or issecretvalue(surnameWidth) or issecretvalue(levelWidth) or issecretvalue(boxWidth) then
+			useRow = false
+		else
+			local total = nameWidth + NAME_GAP + surnameWidth + levelWidth
+			if boxWidth > 0 and total > boxWidth then
+				nameWidth = math.max(nameWidth - (total - boxWidth), 1)
+				total = boxWidth
+			end
+			text:SetWidth(nameWidth)
+			text:SetPoint("BOTTOMLEFT", box, "BOTTOM", -total / 2, 0)
+		end
+	end
+	if not useRow then
+		text:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT")
+		text:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT")
+		if level ~= nil then
+			text:SetFormattedText("%s |cffffff00%d|r", name, level)
+		else
+			text:SetText(name)
+		end
+	end
+	text.usesSurname = useRow
+	UpdateVisibility(text)
 end
 
 local function Reposition(text)
 	if text.lead then
 		LayoutValue(text)
 	elseif text.anchors then
+		local region = text.box or text
 		local x, y = ns.GetTextOption(text.styleKey, "offsetX"), ns.GetTextOption(text.styleKey, "offsetY")
-		text:ClearAllPoints()
+		region:ClearAllPoints()
 		for _, anchor in ipairs(text.anchors) do
-			text:SetPoint(anchor[1], anchor[2], anchor[3], anchor[4] + x, anchor[5] + y)
+			region:SetPoint(anchor[1], anchor[2], anchor[3], anchor[4] + x, anchor[5] + y)
 		end
+	end
+	if text.box then
+		LayoutName(text)
 	end
 end
 
@@ -271,6 +334,34 @@ function ns.CreateValueText(parent, key, anchorFrame, point, hoverRegion)
 	LayoutValue(text)
 	Register(text)
 	return text
+end
+
+-- A unit's name, which can show its last name too. Place it with ns.PlaceText and fill it with ns.ShowName.
+function ns.CreateNameText(parent, key, hoverRegion)
+	local text = NewText(parent, key, hoverRegion)
+	text.box = CreateFrame("Frame", nil, parent)
+	text.box:SetHeight(1)
+	text.surname = parent:CreateFontString(nil, "OVERLAY")
+	text.surname:SetWordWrap(false)
+	text.surname:SetTextColor(SURNAME_COLOR[1], SURNAME_COLOR[2], SURNAME_COLOR[3])
+	text.surname:SetPoint("BOTTOMLEFT", text, "BOTTOMRIGHT", NAME_GAP, 0)
+	text.level = parent:CreateFontString(nil, "OVERLAY")
+	text.level:SetWordWrap(false)
+	text.level:SetTextColor(LEVEL_COLOR[1], LEVEL_COLOR[2], LEVEL_COLOR[3])
+	text.level:SetPoint("BOTTOMLEFT", text.surname, "BOTTOMRIGHT", NAME_GAP, 0)
+	Register(text)
+	return text
+end
+
+-- name and surname straight from UnitName, which can be secret. level is for the player's own name.
+function ns.ShowName(text, name, surname, level)
+	text.firstName, text.lastName, text.levelValue = name, surname, level
+	LayoutName(text)
+end
+
+-- The name's box changed width, so the row has to fit again.
+function ns.RefreshName(text)
+	LayoutName(text)
 end
 
 -- Alpha 1 below full and 0 at full, so a missing amount hides at full. The value can be secret, so
@@ -342,11 +433,11 @@ function ns.SetTextStyle(key, part, value)
 	style[part] = value
 	styles[key] = next(style) and style or nil
 	for _, text in ipairs(styledTexts[key] or {}) do
+		ApplyTextStyle(text)
 		Reposition(text)
 		if text.lead and text.unit then
 			ns.ShowValue(text, text.unit, text.powerType)
 		end
-		ApplyTextStyle(text)
 		UpdateVisibility(text)
 	end
 end
@@ -355,11 +446,11 @@ end
 function ns.RefreshAllText()
 	for _, texts in pairs(styledTexts) do
 		for _, text in ipairs(texts) do
+			ApplyTextStyle(text)
 			Reposition(text)
 			if text.lead and text.unit then
 				ns.ShowValue(text, text.unit, text.powerType)
 			end
-			ApplyTextStyle(text)
 			UpdateVisibility(text)
 		end
 	end

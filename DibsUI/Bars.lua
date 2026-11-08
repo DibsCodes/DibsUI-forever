@@ -85,7 +85,8 @@ local function LayoutBar(button)
 	button.bar:SetPoint("CENTER", body, "CENTER", side * ((fillOuter + spec.fillInner) / 2 - centerDistance), 0)
 
 	if button.nameText then
-		button.nameText:SetWidth(width - button.nameReserved)
+		button.nameText.box:SetWidth(width - button.nameReserved)
+		ns.RefreshName(button.nameText)
 	end
 end
 
@@ -206,7 +207,7 @@ end
 
 local function CreatePlayerName(button)
 	local overlay = button.overlay
-	local name = ns.CreateText(overlay, "playerName", button)
+	local name = ns.CreateNameText(overlay, "playerName", button)
 	PlaceName(name, button, ns.Text.playerName, 0)
 
 	local function Update()
@@ -214,7 +215,8 @@ local function CreatePlayerName(button)
 		if classColor then
 			ns.SetTextColor(name, classColor.r, classColor.g, classColor.b)
 		end
-		name:SetFormattedText("%s |cffffff00%d|r", UnitName("player"), UnitEffectiveLevel("player"))
+		local firstName, surname = UnitName("player")
+		ns.ShowName(name, firstName, surname, UnitEffectiveLevel("player"))
 	end
 
 	overlay:RegisterUnitEvent("UNIT_NAME_UPDATE", "player")
@@ -333,7 +335,7 @@ local function CreateTargetName(button)
 	ns.PlaceText(level, "BOTTOMRIGHT", button.body, "TOPRIGHT", ns.Text.targetLevel.x, ns.Text.targetLevel.y)
 
 	-- Leaves room each side so a long name stays centred and clear of the level.
-	local name = ns.CreateText(overlay, "targetName", button)
+	local name = ns.CreateNameText(overlay, "targetName", button)
 	PlaceName(name, button, ns.Text.targetName, 60)
 
 	overlay:RegisterUnitEvent("UNIT_NAME_UPDATE", "target")
@@ -346,7 +348,7 @@ local function CreateTargetName(button)
 		if not UnitExists("target") then
 			return
 		end
-		name:SetText(UnitName("target"))
+		ns.ShowName(name, UnitName("target"))
 		UpdateTargetNameColor(name, "target")
 		UpdateTargetLevel(level, "target")
 	end)
@@ -490,7 +492,7 @@ local function CreateTargetOfTarget(wing)
 	ns.PlaceText(level, "BOTTOMRIGHT", body, "TOPRIGHT", levelSpec.x, levelSpec.y)
 
 	-- Target names can be long. This keeps them over the bar and clear of the level at any width.
-	local name = ns.CreateText(overlay, "totName", button)
+	local name = ns.CreateNameText(overlay, "totName", button)
 	ns.PlaceText(name, "BOTTOMLEFT", body, "TOPLEFT", nameSpec.x, nameSpec.y)
 	ns.PlaceText(name, "BOTTOMRIGHT", level, "BOTTOMLEFT", -3, 0)
 
@@ -500,7 +502,7 @@ local function CreateTargetOfTarget(wing)
 		if exists then
 			UpdateHealth(bar, unit, interpolation)
 			UpdateTargetColor(bar, unit)
-			name:SetText(UnitName(unit))
+			ns.ShowName(name, UnitName(unit))
 			UpdateTargetNameColor(name, unit)
 			UpdateTargetLevel(level, unit)
 		end

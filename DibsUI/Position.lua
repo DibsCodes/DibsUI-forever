@@ -6,6 +6,7 @@ ns.ScaleRange = { min = 0.5, max = 2, step = 0.05 }
 ns.WidthRange = { min = 0.5, max = 2, step = 0.05 }
 ns.TextSizeRange = { min = 6, max = 40, step = 1 }
 ns.TextOffsetRange = { min = -100, max = 100, step = 1 }
+ns.OpacityRange = { min = 0, max = 1, step = 0.05 }
 
 ns.DEFAULT_PROFILE = "Default"
 
@@ -16,6 +17,9 @@ local PROFILE_DEFAULTS = {
 	width = 1,
 	petWidth = 1,
 	showTargetOfTarget = true,
+	showSurnames = false,
+	opacityMode = "smart",
+	manualOpacity = 0.6,
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
 	x = 0,
 	y = Layout.originY,
@@ -100,6 +104,13 @@ function ns.CleanProfile(profile)
 	profile.scale = Clamp(profile.scale, ns.ScaleRange)
 	profile.width = Clamp(profile.width, ns.WidthRange)
 	profile.petWidth = Clamp(profile.petWidth, ns.WidthRange)
+	if not ns.OpacityModesByKey[profile.opacityMode] then
+		profile.opacityMode = PROFILE_DEFAULTS.opacityMode
+	end
+	if type(profile.manualOpacity) ~= "number" then
+		profile.manualOpacity = PROFILE_DEFAULTS.manualOpacity
+	end
+	profile.manualOpacity = Clamp(profile.manualOpacity, ns.OpacityRange)
 	profile.text = CleanTextStyles(profile.text)
 	return profile
 end
@@ -325,5 +336,11 @@ function ns.ApplyProfile()
 	ns.UpdateBarWidths()
 	LayoutMover()
 	UpdateMover()
+	ns.RefreshAllText()
+end
+
+-- Last names are only text, so this works in combat too.
+function ns.SetSurnamesShown(shown)
+	ns.db.showSurnames = shown
 	ns.RefreshAllText()
 end
