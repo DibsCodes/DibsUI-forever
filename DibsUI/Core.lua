@@ -169,6 +169,7 @@ end
 
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
 hiddenParent:Hide()
+ns.hiddenParent = hiddenParent
 
 -- PlayerFrame itself stays alive: TotemFrame, RuneFrame and the class resource bars are its children.
 -- PetFrame is laid out by a managed container that takes it back when it's shown, but under a hidden
@@ -207,6 +208,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateBars()
 			ns.CreateOrb()
 			ns.CreateMover()
+			ns.CreateAuraFrames()
 			ns.CreateOpacity()
 			ns.CreateMinimapButton()
 		end

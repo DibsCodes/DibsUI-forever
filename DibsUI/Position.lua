@@ -112,6 +112,7 @@ function ns.CleanProfile(profile)
 	end
 	profile.manualOpacity = Clamp(profile.manualOpacity, ns.OpacityRange)
 	profile.text = CleanTextStyles(profile.text)
+	profile.auras = ns.CleanAuraSettings(profile.auras)
 	return profile
 end
 
@@ -210,6 +211,7 @@ end
 local function UpdateMover()
 	mover:SetShown(not ns.db.locked and not InCombatLockdown())
 	ns.UpdateOpacity()
+	ns.UpdateAuraMovers()
 end
 
 -- The root stays symmetrical around the orb and only covers the health bars, so the pet and target
@@ -337,6 +339,7 @@ function ns.ApplyProfile()
 	LayoutMover()
 	UpdateMover()
 	ns.RefreshAllText()
+	ns.RefreshAuraFrames()
 end
 
 -- Last names are only text, so this works in combat too.

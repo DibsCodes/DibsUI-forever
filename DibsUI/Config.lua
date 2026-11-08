@@ -1,6 +1,6 @@
 local _, ns = ...
 
-local WIDTH, HEIGHT = 640, 440
+local WIDTH, HEIGHT = 730, 540
 local COLUMN_WIDTH = 280
 local COLUMN_GAP = 32
 
@@ -150,6 +150,7 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 
 	local label = CreateLabel(row, "GameFontHighlight", text)
 	label:SetPoint("TOPLEFT", 0, -4)
+	row.label = label
 
 	local input = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
 	input:SetSize(INPUT_WIDTH, 20)
@@ -212,15 +213,15 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 end
 
 -- A label on the left and Blizzard's dropdown on the right.
-local function CreateDropdownRow(parent, text)
+local function CreateDropdownRow(parent, text, rowWidth, dropdownWidth)
 	local row = CreateFrame("Frame", nil, parent)
-	row:SetSize(COLUMN_WIDTH, 34)
+	row:SetSize(rowWidth or COLUMN_WIDTH, 34)
 
 	local label = CreateLabel(row, "GameFontHighlight", text)
 	label:SetPoint("LEFT")
 
 	local dropdown = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
-	dropdown:SetWidth(DROPDOWN_WIDTH)
+	dropdown:SetWidth(dropdownWidth or DROPDOWN_WIDTH)
 	dropdown:SetPoint("RIGHT")
 	row.dropdown = dropdown
 	return row
@@ -267,11 +268,8 @@ local function BuildLookAndFeel(page, left, right)
 	local section = CreateSection(page, "Frames")
 	section:SetPoint("TOPLEFT", left, 0)
 
-	local lock = CreateToggleRow(page, "Lock position", ns.SetLocked)
-	lock:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -2)
-
 	local showToT = CreateToggleRow(page, "Show target of target", ns.SetTargetOfTargetShown)
-	showToT:SetPoint("TOPLEFT", lock, "BOTTOMLEFT")
+	showToT:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -2)
 
 	local surnames = CreateToggleRow(page, "Show last names", ns.SetSurnamesShown)
 	surnames:SetPoint("TOPLEFT", showToT, "BOTTOMLEFT")
@@ -350,7 +348,6 @@ local function BuildLookAndFeel(page, left, right)
 	local options = {}
 
 	function options.Sync()
-		lock.toggle:SetChecked(ns.db.locked)
 		showToT.toggle:SetChecked(ns.db.showTargetOfTarget)
 		surnames.toggle:SetChecked(ns.db.showSurnames)
 		SyncOpacity()
@@ -360,7 +357,7 @@ local function BuildLookAndFeel(page, left, right)
 	end
 
 	function options.SetCombatLocked(locked)
-		for _, control in ipairs({ lock, showToT, scale, width, petWidth, center, up, down, leftButton, rightButton }) do
+		for _, control in ipairs({ showToT, scale, width, petWidth, center, up, down, leftButton, rightButton }) do
 			control:SetEnabled(not locked)
 		end
 	end
@@ -566,8 +563,8 @@ local function BuildTextOptions(page, left, right)
 end
 
 -- Sits above the tabs, since it applies to the whole addon rather than one tab.
-local function CreateMinimapToggle(frame)
-	local row = CreateToggleRow(frame, "Show minimap button", ns.SetMinimapButtonShown)
+local function CreateTopToggle(frame, text, onChange)
+	local row = CreateToggleRow(frame, text, onChange)
 	row:SetWidth(row.label:GetStringWidth() + 12 + TOGGLE_WIDTH)
 	return row
 end
@@ -805,9 +802,385 @@ local function BuildProfiles(page, left, right, context)
 	}
 end
 
+local SIDEBAR_WIDTH = 170
+local AURA_COLUMN_WIDTH = 230
+local AURA_COLUMN_GAP = 20
+local AURA_DROPDOWN_WIDTH = 130
+local AURA_GROUP_HEIGHT = 30
+
+-- The groups down the left, each with its own switch, and the picked group's settings beside them.
+-- None of it is protected, so it all works in combat.
+local function BuildAuras(page, left)
+	local selected = ns.AuraGroups[1]
+	local refresh
+	local syncs = {}
+
+	local function Get(field)
+		return ns.GetAuraSettings(selected.key)[field]
+	end
+
+	local function Set(field, value)
+		ns.SetAuraOption(selected.key, field, value)
+	end
+
+	local function GetList(field)
+		return ns.GetAuraSettings(selected.key).list[field]
+	end
+
+	local function SetList(field, value)
+		ns.SetAuraListOption(selected.key, field, value)
+	end
+
+	local groupSection = CreateSection(page, "Groups")
+	groupSection:SetWidth(SIDEBAR_WIDTH)
+	groupSection:SetPoint("TOPLEFT", left, 0)
+
+	local groupRows = {}
+	for i, group in ipairs(ns.AuraGroups) do
+		local row = CreateFrame("Button", nil, page)
+		row:SetSize(SIDEBAR_WIDTH, AURA_GROUP_HEIGHT)
+		row:SetPoint("TOPLEFT", groupSection, "BOTTOMLEFT", 0, -2 - (i - 1) * AURA_GROUP_HEIGHT)
+
+		local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+		highlight:SetAllPoints()
+		highlight:SetColorTexture(1, 1, 1, 0.08)
+
+		row.selected = row:CreateTexture(nil, "BACKGROUND")
+		row.selected:SetAllPoints()
+		row.selected:SetColorTexture(TOGGLE_ON[1], TOGGLE_ON[2], TOGGLE_ON[3], 0.15)
+
+		local label = CreateLabel(row, group.built and "GameFontHighlight" or "GameFontDisable", group.label)
+		label:SetPoint("LEFT", 8, 0)
+
+		if group.built then
+			row.toggle = CreateToggle(row, function(checked)
+				ns.SetAuraOption(group.key, "enabled", checked)
+			end)
+			row.toggle:SetPoint("RIGHT", -4, 0)
+		else
+			local soon = CreateLabel(row, "GameFontDisableSmall", "Soon")
+			soon:SetPoint("RIGHT", -8, 0)
+		end
+
+		row:SetScript("OnClick", function()
+			selected = group
+			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+			refresh()
+		end)
+		groupRows[i] = { row = row, group = group }
+	end
+
+	local testSection = CreateSection(page, "Test mode")
+	testSection:SetWidth(SIDEBAR_WIDTH)
+	testSection:SetPoint("TOPLEFT", groupSection, "BOTTOMLEFT", 0, -14 - #ns.AuraGroups * AURA_GROUP_HEIGHT)
+
+	local testRow = CreateToggleRow(page, "Show test buffs", ns.SetAuraTestMode)
+	testRow:SetWidth(SIDEBAR_WIDTH)
+	testRow:SetPoint("TOPLEFT", testSection, "BOTTOMLEFT", 0, -2)
+
+	local testHint = CreateLabel(page, "GameFontDisableSmall",
+		"Fills every group with sample buffs, so you can see the layout as you change it. Turns off when you reload.")
+	testHint:SetPoint("TOPLEFT", testRow, "BOTTOMLEFT", 0, -2)
+	testHint:SetWidth(SIDEBAR_WIDTH)
+	testHint:SetWordWrap(true)
+
+	if ns.hasMasque then
+		local masqueHint = CreateLabel(page, "GameFontDisableSmall",
+			"Masque is installed: pick a skin for these icons in Masque's settings (/masque).")
+		masqueHint:SetPoint("TOPLEFT", testHint, "BOTTOMLEFT", 0, -10)
+		masqueHint:SetWidth(SIDEBAR_WIDTH)
+		masqueHint:SetWordWrap(true)
+	end
+
+	-- The picked group's settings, in two columns. Groups that aren't built yet show a note instead.
+	local pane = CreateFrame("Frame", nil, page)
+	pane:SetAllPoints()
+
+	local columnA = CreateFrame("Frame", nil, pane)
+	columnA:SetSize(1, 1)
+	columnA:SetPoint("TOPLEFT", left, "TOPLEFT", SIDEBAR_WIDTH + AURA_COLUMN_GAP, 0)
+	local columnB = CreateFrame("Frame", nil, pane)
+	columnB:SetSize(1, 1)
+	columnB:SetPoint("TOPLEFT", columnA, "TOPLEFT", AURA_COLUMN_WIDTH + AURA_COLUMN_GAP, 0)
+
+	local comingSoon = CreateLabel(page, "GameFontDisable", "")
+	comingSoon:SetPoint("TOPLEFT", columnA, "TOPLEFT", 0, -6)
+
+	-- Standard and list mode each have their own first column. The second column, with the mode and
+	-- position, is shared.
+	local standardPane = CreateFrame("Frame", nil, pane)
+	standardPane:SetAllPoints()
+	local listPane = CreateFrame("Frame", nil, pane)
+	listPane:SetAllPoints()
+
+	local function Section(parent, text, anchor, gap)
+		local section = CreateSection(parent, text)
+		section:SetWidth(AURA_COLUMN_WIDTH)
+		local isColumnTop = anchor == columnA or anchor == columnB
+		section:SetPoint("TOPLEFT", anchor, isColumnTop and "TOPLEFT" or "BOTTOMLEFT", 0, gap or 0)
+		return section
+	end
+
+	-- Each row's refresh, run only while the row is showing, so a row never reads a setting the picked
+	-- group doesn't have.
+	local function AddSync(row, sync)
+		syncs[#syncs + 1] = { row = row, sync = sync }
+	end
+
+	local function IsShowing(region)
+		while region and region ~= page do
+			if not region:IsShown() then
+				return false
+			end
+			region = region:GetParent()
+		end
+		return true
+	end
+
+	local function Slider(parent, text, range, access, anchor, gap)
+		local row = CreateSliderRow(parent, text, range, FormatSize, access.get, access.set)
+		row:SetWidth(AURA_COLUMN_WIDTH)
+		row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or 0)
+		AddSync(row, row.Sync)
+		return row
+	end
+
+	local function Dropdown(parent, text, anchor, gap)
+		local row = CreateDropdownRow(parent, text, AURA_COLUMN_WIDTH, AURA_DROPDOWN_WIDTH)
+		row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or 0)
+		AddSync(row, function() row.dropdown:GenerateMenu() end)
+		return row
+	end
+
+	local function Choices(parent, text, list, access, anchor, gap)
+		local row = Dropdown(parent, text, anchor, gap)
+		row.dropdown:SetupMenu(function(_, root)
+			for _, item in ipairs(list) do
+				root:CreateRadio(item.label,
+					function() return access.get() == item.key end,
+					function()
+						access.set(item.key)
+						refresh()
+					end, item)
+			end
+		end)
+		return row
+	end
+
+	-- Each font shows in its own typeface. nil is the default font.
+	local function FontChoice(parent, access, anchor, gap)
+		local row = Dropdown(parent, "Font", anchor, gap)
+		row.dropdown:SetupMenu(function(_, root)
+			root:SetScrollMode(360)
+			for _, font in ipairs(ns.GetFonts()) do
+				local radio = root:CreateRadio(font.name,
+					function() return SameFont(access.get() or ns.Text.font, font.path) end,
+					function()
+						access.set(not SameFont(font.path, ns.Text.font) and font.path or nil)
+						refresh()
+					end, font)
+				radio:AddInitializer(function(button)
+					button.fontString:SetFontObject(GetPreviewFont(font.path))
+				end)
+			end
+		end)
+		row.dropdown:SetDefaultText("Friz Quadrata")
+		return row
+	end
+
+	local function ColorChoice(parent, access, anchor)
+		local row = CreateFrame("Frame", nil, parent)
+		row:SetSize(AURA_COLUMN_WIDTH, 30)
+		row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT")
+		local label = CreateLabel(row, "GameFontHighlight", "Color")
+		label:SetPoint("LEFT")
+		local swatch = CreateFrame("Button", nil, row, "ColorSwatchTemplate")
+		swatch:SetSize(22, 22)
+		swatch.SwatchBg:SetSize(20, 20)
+		swatch.InnerBorder:SetSize(18, 18)
+		swatch.Color:SetSize(16, 16)
+		swatch:SetPoint("RIGHT", -2, 0)
+		swatch:SetScript("OnClick", function()
+			local previous = access.get()
+			ColorPickerFrame:SetupColorPickerAndShow({
+				r = previous[1], g = previous[2], b = previous[3],
+				swatchFunc = function()
+					access.set({ ColorPickerFrame:GetColorRGB() })
+					refresh()
+				end,
+				cancelFunc = function()
+					access.set(previous)
+					refresh()
+				end,
+			})
+		end)
+		AddSync(row, function() swatch:SetColorRGB(unpack(access.get())) end)
+		return row
+	end
+
+	-- Reads and writes one setting of the picked group, or of its list mode.
+	local function Field(field)
+		return { get = function() return Get(field) end, set = function(value) Set(field, value) end }
+	end
+
+	local function ListField(field)
+		return { get = function() return GetList(field) end, set = function(value) SetList(field, value) end }
+	end
+
+	-- Position settings belong to the mode in use, since list mode has its own.
+	local function IsList()
+		return selected.hasListMode == true and Get("mode") == "list"
+	end
+
+	local function PositionField(field)
+		return {
+			get = function() return IsList() and GetList(field) or Get(field) end,
+			set = function(value)
+				if IsList() then
+					SetList(field, value)
+				else
+					Set(field, value)
+				end
+			end,
+		}
+	end
+
+	-- Standard mode: icons
+	local iconSection = Section(standardPane, "Icons", columnA)
+	local iconSize = Slider(standardPane, "Icon size", ns.AuraIconSizeRange, Field("iconSize"), iconSection, -2)
+	local spacing = Slider(standardPane, "Spacing", ns.AuraSpacingRange, Field("spacing"), iconSize)
+	local growthRow = Choices(standardPane, "Growth", ns.AuraGrowths, Field("growth"), spacing)
+	local frameSize = Slider(standardPane, "Frame width", ns.AuraFrameSizeRange, Field("frameSize"), growthRow)
+
+	-- Standard mode: time text
+	local textSection = Section(standardPane, "Time text", frameSize, -6)
+	local fontRow = FontChoice(standardPane, Field("font"), textSection, -2)
+	local textSize = Slider(standardPane, "Size", ns.AuraTextSizeRange, Field("textSize"), fontRow)
+	ColorChoice(standardPane, Field("textColor"), textSize)
+
+	-- List mode: icons
+	local listIconSection = Section(listPane, "Icons", columnA)
+	local rightSide = CreateToggleRow(listPane, "Icon on the right", function(checked)
+		SetList("iconSide", checked and "RIGHT" or "LEFT")
+	end)
+	rightSide:SetWidth(AURA_COLUMN_WIDTH)
+	rightSide:SetPoint("TOPLEFT", listIconSection, "BOTTOMLEFT", 0, -2)
+	AddSync(rightSide, function() rightSide.toggle:SetChecked(GetList("iconSide") == "RIGHT") end)
+	local listIconSize = Slider(listPane, "Icon size", ns.AuraIconSizeRange, ListField("iconSize"), rightSide)
+	local listSpacing = Slider(listPane, "Spacing", ns.AuraSpacingRange, ListField("spacing"), listIconSize)
+
+	-- List mode: name and time
+	local nameSection = Section(listPane, "Name", listSpacing, -6)
+	local nameFont = FontChoice(listPane, ListField("nameFont"), nameSection, -2)
+	local nameSize = Slider(listPane, "Size", ns.AuraTextSizeRange, ListField("nameSize"), nameFont)
+	local nameColor = ColorChoice(listPane, ListField("nameColor"), nameSize)
+
+	local timeSection = Section(listPane, "Time", nameColor, -6)
+	local timeFont = FontChoice(listPane, ListField("timeFont"), timeSection, -2)
+	local timeSize = Slider(listPane, "Size", ns.AuraTextSizeRange, ListField("timeSize"), timeFont)
+	ColorChoice(listPane, ListField("timeColor"), timeSize)
+
+	-- Mode, for the groups that have a list mode
+	local modeSection = Section(pane, "Layout", columnB)
+	local modeRow = Choices(pane, "Mode", ns.AuraModes, Field("mode"), modeSection, -2)
+	local modeHint = CreateLabel(pane, "GameFontDisableSmall", "")
+	modeHint:SetPoint("TOPLEFT", modeRow, "BOTTOMLEFT", 0, 0)
+	modeHint:SetWidth(AURA_COLUMN_WIDTH)
+	modeHint:SetWordWrap(true)
+
+	-- Position, of the mode in use. Anchored groups have none, and say where they sit instead.
+	local positionPane = CreateFrame("Frame", nil, pane)
+	positionPane:SetAllPoints()
+	local positionSection = CreateSection(positionPane, "Position")
+	positionSection:SetWidth(AURA_COLUMN_WIDTH)
+	local pointRow = Choices(positionPane, "Frame point", ns.AuraPoints, PositionField("point"), positionSection, -2)
+	local targetRow = Choices(positionPane, "Attach to", ns.AuraAnchorTargets, PositionField("anchorTo"), pointRow)
+	local targetPointRow = Choices(positionPane, "Attach point", ns.AuraPoints, PositionField("anchorPoint"), targetRow)
+	local offsetX = Slider(positionPane, "X offset", ns.AuraOffsetRange, PositionField("x"), targetPointRow)
+	local offsetY = Slider(positionPane, "Y offset", ns.AuraOffsetRange, PositionField("y"), offsetX)
+
+	local positionHint = CreateLabel(positionPane, "GameFontDisableSmall",
+		"Sizes and offsets follow your UI scale. You can also drag the frame while frames are unlocked.")
+	positionHint:SetPoint("TOPLEFT", offsetY, "BOTTOMLEFT", 0, -4)
+	positionHint:SetWidth(AURA_COLUMN_WIDTH)
+	positionHint:SetWordWrap(true)
+
+	local anchoredSection = Section(pane, "Position", columnB)
+	local anchoredNote = CreateLabel(pane, "GameFontHighlightSmall", "")
+	anchoredNote:SetPoint("TOPLEFT", anchoredSection, "BOTTOMLEFT", 0, -6)
+	anchoredNote:SetWidth(AURA_COLUMN_WIDTH)
+	anchoredNote:SetWordWrap(true)
+	anchoredNote:SetJustifyH("LEFT")
+
+	function refresh()
+		for _, entry in ipairs(groupRows) do
+			entry.row.selected:SetShown(entry.group == selected)
+			if entry.row.toggle then
+				entry.row.toggle:SetChecked(ns.GetAuraSettings(entry.group.key).enabled)
+			end
+		end
+		testRow.toggle:SetChecked(ns.auraTestMode)
+		pane:SetShown(selected.built == true)
+		comingSoon:SetShown(not selected.built)
+		comingSoon:SetText(selected.label .. " are coming soon.")
+		if not selected.built then
+			return
+		end
+
+		local hasListMode = selected.hasListMode == true
+		local isAnchored = selected.anchored == true
+		local isList = IsList()
+		modeSection:SetShown(hasListMode)
+		modeRow:SetShown(hasListMode)
+		modeHint:SetShown(hasListMode)
+		if hasListMode then
+			modeHint:SetText(ns.AuraModesByKey[Get("mode")].description)
+		end
+		positionSection:ClearAllPoints()
+		if hasListMode then
+			positionSection:SetPoint("TOPLEFT", modeHint, "BOTTOMLEFT", 0, -10)
+		else
+			positionSection:SetPoint("TOPLEFT", columnB, "TOPLEFT")
+		end
+		positionPane:SetShown(not isAnchored)
+		anchoredSection:SetShown(isAnchored)
+		anchoredNote:SetShown(isAnchored)
+		anchoredNote:SetText(selected.anchorNote or "")
+		standardPane:SetShown(not isList)
+		listPane:SetShown(isList)
+
+		-- Anchored groups take their growth and width from the frame they sit on.
+		growthRow:SetShown(not isAnchored)
+		frameSize:SetShown(not isAnchored)
+		textSection:ClearAllPoints()
+		textSection:SetPoint("TOPLEFT", isAnchored and spacing or frameSize, "BOTTOMLEFT", 0, -6)
+		if not isAnchored then
+			-- Growth that fills up or down first wraps at the frame's height instead.
+			local growth = ns.AuraGrowthsByKey[Get("growth")]
+			local isVertical = growth.line == "UP" or growth.line == "DOWN"
+			frameSize.label:SetText(isVertical and "Frame height" or "Frame width")
+		end
+		for _, entry in ipairs(syncs) do
+			if IsShowing(entry.row) then
+				entry.sync()
+			end
+		end
+	end
+
+	-- Dragging the frame while unlocked changes its offsets, which the sliders follow.
+	function ns.OnAuraSettingsMoved(groupKey)
+		if groupKey == selected.key and page:IsVisible() then
+			refresh()
+		end
+	end
+
+	return { Sync = refresh, SetCombatLocked = function() end }
+end
+
 local TABS = {
 	{ label = "Look and feel", build = BuildLookAndFeel },
 	{ label = "Text options", build = BuildTextOptions },
+	{ label = "Buffs/Debuffs", build = BuildAuras },
 	{ label = "Profiles", build = BuildProfiles },
 }
 local function CreateConfig()
@@ -822,8 +1195,14 @@ local function CreateConfig()
 	frame:SetDontSavePosition(true)
 	tinsert(UISpecialFrames, frame:GetName())
 
-	local minimapToggle = CreateMinimapToggle(frame)
+	local minimapToggle = CreateTopToggle(frame, "Show minimap button", ns.SetMinimapButtonShown)
 	minimapToggle:SetPoint("TOPRIGHT", -14, -26)
+
+	-- Unlocking moves every frame, so it's here where every tab can reach it.
+	local unlockToggle = CreateTopToggle(frame, "Unlock frames", function(checked)
+		ns.SetLocked(not checked)
+	end)
+	unlockToggle:SetPoint("RIGHT", minimapToggle, "LEFT", -28, 0)
 
 	local inset = CreateFrame("Frame", nil, frame, "InsetFrameTemplate")
 	inset:SetPoint("TOPLEFT", 10, -60)
@@ -834,6 +1213,7 @@ local function CreateConfig()
 	-- After a profile switch every tab shows the new profile's settings.
 	local context = { window = frame }
 	function context.SyncAll()
+		unlockToggle.toggle:SetChecked(not ns.db.locked)
 		for _, page in ipairs(pages) do
 			page.options.Sync()
 		end
@@ -877,6 +1257,7 @@ local function CreateConfig()
 	combatNote:SetPoint("BOTTOM", 0, 11)
 
 	local function SetCombatLocked(locked)
+		unlockToggle:SetEnabled(not locked)
 		for _, page in ipairs(pages) do
 			page.options.SetCombatLocked(locked)
 		end

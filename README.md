@@ -52,6 +52,17 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Shows a round spell icon, the spell name and `current / total` time below the orb
 - Runs in grey for your main hand swing timer when you aren't casting
 
+**Player buffs**
+- Replace Blizzard's buff frame with two frames: long buffs and short buffs
+- Long buffs last over 2 minutes or never expire, and short buffs are everything else
+- Both are built on Blizzard's own aura container, so they keep updating in combat, when addons can't read buffs themselves
+- DibsUI learns each buff's full duration whenever buffs can be read, and remembers it for every character on the account. A buff it hasn't seen before shows with the short buffs until the fight ends, then moves to the long buffs. After that it goes straight to the long buffs, even mid-fight
+- With one frame turned off, the other shows every buff
+- Long buffs can be placed anywhere, with a growth direction and frame width, or switched to List mode: one buff per line, longest at the top, with its name and time beside the icon
+- Short buffs sit above the player bar, as wide as it and clear of your name, filling left from the orb, then up
+- Hover a buff for its tooltip, and right-click it out of combat to cancel it
+- Icons can be skinned with Masque
+
 **Opacity**
 
 Pick a mode in the settings. Smart, the default, follows what's happening:
@@ -84,9 +95,14 @@ The other files in this repository aren't needed in-game.
 
 ## Settings
 
-Type `/dui` or `/dibsui`, or click the minimap button, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns, and has three tabs.
+Type `/dui` or `/dibsui`, or click the minimap button, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns, and has four tabs.
 
-**Show minimap button**, at the top of the window, turns the minimap button on or off.
+At the top of the window, on every tab:
+
+| Setting | What it does |
+|---|---|
+| Unlock frames | Shows drag handles for the frames and the long buffs. Bars don't respond to clicks until you switch it off again. |
+| Show minimap button | Turns the minimap button on or off. |
 
 ### Look and feel
 
@@ -94,7 +110,6 @@ Type `/dui` or `/dibsui`, or click the minimap button, to open the settings wind
 
 | Setting | What it does |
 |---|---|
-| Lock position | Switch it off to show a drag handle and move the frames. Bars don't respond to clicks until you lock it again. |
 | Show target of target | Turns the target of target bar on or off. |
 | Scale | Scales everything from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
 | Width | Sets the length of the player and target bars from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
@@ -145,6 +160,34 @@ A health or power spot can show:
 
 The defaults are the layout above: missing health on the player bar's left side, percent and current on the target's, and the pet's current / max on mouseover.
 
+### Buffs/Debuffs
+
+The groups are listed down the left, each with its own switch. Click one to change its settings. Player debuffs, target buffs and target debuffs are coming later.
+
+**Show test buffs** fills every group with sample buffs, so you can see the layout as you change it. It turns off when you reload.
+
+**Player long buffs**
+
+| Setting | What it does |
+|---|---|
+| Mode | Standard, a grid of icons with the time under each, or List, one buff per line. Each mode keeps its own settings and position. |
+| Icon size, Spacing | In both modes. Spacing applies between icons and between lines. |
+| Growth | Standard: which way icons fill a line, then which way new lines go. The first buff sits in the corner both start from. |
+| Frame width | Standard: how long a line is, in UI units. The number of buffs per line follows from the icon size and spacing. For growth that fills up or down first, this is the frame's height. |
+| Time text | Standard: font, size and color. |
+| Icon on the right | List: puts the icons down the right side, with the text on their left. |
+| Name, Time | List: font, size and color of each. The name lines up with the icon's top and the time with its bottom. |
+| Frame point, Attach to, Attach point, X offset, Y offset | Where the frame sits: a point of the frame, attached to a point of the screen, the DibsUI frames, the orb or the minimap. You can also drag it while frames are unlocked. |
+
+**Player short buffs**
+
+| Setting | What it does |
+|---|---|
+| Icon size, Spacing | Size of the icons and the gap between them and between lines. |
+| Time text | Font, size and color. |
+
+Sizes and offsets follow your UI scale. The short buffs also follow DibsUI's Scale setting, since they sit on the player bar.
+
 ### Profiles
 
 Profiles are shared by every character on your account, and each character remembers which one it uses. Your settings start in the **Default** profile, and new characters use it too.
@@ -156,13 +199,15 @@ Profiles are shared by every character on your account, and each character remem
 
 The minimap button's settings are the same in every profile.
 
-Frame, position and profile settings can't be changed during combat, but text, last name, opacity and minimap settings can.
+Frame, position and profile settings can't be changed during combat, but text, last name, opacity, buff and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
 
 ## Status
 
 Early development, for interface version 16001.
 
 So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs, how the settings window looks in the live game, and profiles across real characters, still needs checking in-game.
+
+The buff frames are newer still: the simulator can't show real buffs in Blizzard's aura container, the offline checks don't cover them yet, and real buffs, sorting in combat, cancelling, tooltips and Masque skins on them haven't been checked in-game.
 
 ## Known limitations
 
@@ -177,6 +222,10 @@ So far DibsUI has been tested in the UIForever simulator and with offline checks
 - At 0% opacity the bars are invisible but can still be clicked
 - Fills start outside the orb's ring, so a nearly empty health bar looks slightly fuller than it is
 - If health and power are both secret values out of combat, only health can affect opacity
+- A long buff DibsUI has never seen before shows with the short buffs until the fight ends, the first time you get it mid-fight
+- Weapon enchants are hidden along with Blizzard's buff frame
+- In List mode, names longer than the space beside the icons run past the frame
+- The long buffs' drag handle is sized from the buffs you had the last time they could be read
 
 ## License
 

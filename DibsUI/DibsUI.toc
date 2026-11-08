@@ -4,6 +4,7 @@
 ## Version: 0.1.0
 ## Notes: Replaces the player and target frames with a winged power orb layout.
 ## SavedVariables: DibsUIDB
+## OptionalDeps: Masque
 
 Core.lua
 Text.lua
@@ -12,5 +13,6 @@ Profiles.lua
 Bars.lua
 Orb.lua
 Opacity.lua
+Auras.lua
 MinimapButton.lua
 Config.lua
