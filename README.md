@@ -65,6 +65,18 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Hover a buff for its tooltip, and right-click it out of combat to cancel it
 - Icons can be skinned with Masque
 
+**Target buffs**
+- Every buff on your target, long or short, soonest to expire first
+- Buffs you can steal or purge glow, like on Blizzard's target frame
+- Sit under the target bar by default, and can be placed anywhere, with a growth direction and frame width, like the long buffs
+- Keep updating in combat through Blizzard's aura container, and hover one for its tooltip
+
+**Target debuffs**
+- Sit above the target bar, as wide as it and clear of its name and level, filling right towards the end of the bar, then up
+- Your own debuffs come first, larger than everyone else's, at a size you choose
+- Borders take the debuff type's color: magic, curse, disease or poison
+- Slide in and out with the target bar, and keep updating in combat through Blizzard's aura container
+
 **Opacity**
 
 Pick a mode in the settings. Smart, the default, follows what's happening:
@@ -103,7 +115,7 @@ At the top of the window, on every tab:
 
 | Setting | What it does |
 |---|---|
-| Unlock frames | Shows drag handles for the frames and the long buffs. Bars don't respond to clicks until you switch it off again. |
+| Unlock frames | Shows drag handles for the frames, the long buffs and the target buffs. Bars don't respond to clicks until you switch it off again. |
 | Show minimap button | Turns the minimap button on or off. |
 
 ### Look and feel
@@ -164,9 +176,9 @@ The defaults are the layout above: missing health on the player bar's left side,
 
 ### Buffs/Debuffs
 
-The groups are listed down the left, each with its own switch. Click one to change its settings. Player debuffs, target buffs and target debuffs are coming later.
+The groups are listed down the left, each with its own switch. Click one to change its settings. Player debuffs are coming later.
 
-**Show test buffs** fills every group with sample buffs, so you can see the layout as you change it. It turns off when you reload.
+**Show test buffs** fills every group with sample buffs, so you can see the layout as you change it. Target debuffs show while you have a target, and target buffs show either way. It turns off when you reload.
 
 **Player long buffs**
 
@@ -188,7 +200,24 @@ The groups are listed down the left, each with its own switch. Click one to chan
 | Icon size, Spacing | Size of the icons and the gap between them and between lines. |
 | Time text | Font, size and color. |
 
-Sizes and offsets follow your UI scale. The short buffs also follow DibsUI's Scale setting, since they sit on the player bar.
+**Target buffs**
+
+| Setting | What it does |
+|---|---|
+| Icon size, Spacing | Size of the icons and the gap between them and between lines. |
+| Growth, Frame width | As for the long buffs' Standard mode. |
+| Time text | Font, size and color. |
+| Frame point, Attach to, Attach point, X offset, Y offset | Where the frame sits, as for the long buffs. It starts under the target bar, attached to the orb. You can also drag it while frames are unlocked. |
+
+**Target debuffs**
+
+| Setting | What it does |
+|---|---|
+| Icon size, Spacing | Size of other players' and creatures' debuffs, and the gap between icons and between lines. |
+| Your debuffs icon size | Size of your own debuffs, which come first. |
+| Time text | Font, size and color. |
+
+Sizes and offsets follow your UI scale. The short buffs and target debuffs also follow DibsUI's Scale setting, since they sit on the bars.
 
 ### Profiles
 
@@ -209,11 +238,10 @@ Early development, for interface version 16001.
 
 So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs, how the settings window looks in the live game, and profiles across real characters, still needs checking in-game.
 
-The buff frames are newer still: the simulator can't show real buffs in Blizzard's aura container, the offline checks don't cover them yet, and real buffs, sorting in combat, cancelling, tooltips and Masque skins on them haven't been checked in-game.
+The buff frames are newer still: the simulator can't show real buffs in Blizzard's aura container, the offline checks don't cover them yet, and target buffs and debuffs haven't been checked in-game yet.
 
 ## Known limitations
 
-- Hiding Blizzard's target frame also hides your target's buffs and debuffs
 - Totem and class resource bars still sit where Blizzard's player frame was
 - In a vehicle, the bars keep showing your character
 - Only the main frames are kept on screen when dragging, so the pet and target of target bars can go past the screen's edges

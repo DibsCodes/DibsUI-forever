@@ -420,7 +420,7 @@ local function CreateTargetWing()
 	function wing:UpdateWidth()
 		-- The target of target bar reaches past the root, and the clip has to leave room for it.
 		clip:ClearAllPoints()
-		clip:SetPoint("TOPLEFT", ns.root, "TOP", Layout.wingClipInner, 0)
+		clip:SetPoint("TOPLEFT", ns.root, "TOP", Layout.wingClipInner, Layout.wingClipHeadroom)
 		clip:SetPoint("BOTTOMRIGHT", ns.root, "BOTTOMRIGHT", ns.GetOuterBarOverhang(), 0)
 		self:SetSize(ns.GetRootWidth(), Layout.rootHeight)
 		if not hasTarget then

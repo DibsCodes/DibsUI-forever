@@ -879,7 +879,7 @@ local function BuildAuras(page, left)
 	testRow:SetPoint("TOPLEFT", testSection, "BOTTOMLEFT", 0, -2)
 
 	local testHint = CreateLabel(page, "GameFontDisableSmall",
-		"Fills every group with sample buffs, so you can see the layout as you change it. Turns off when you reload.")
+		"Fills every group with sample buffs, so you can see the layout as you change it. Target debuffs show while you have a target, and target buffs show either way. Turns off when you reload.")
 	testHint:SetPoint("TOPLEFT", testRow, "BOTTOMLEFT", 0, -2)
 	testHint:SetWidth(SIDEBAR_WIDTH)
 	testHint:SetWordWrap(true)
@@ -937,8 +937,14 @@ local function BuildAuras(page, left)
 		return true
 	end
 
+	-- A slider reads its value as it's made, while the first group is picked, which may not have this
+	-- setting. Its row only shows for groups that do.
 	local function Slider(parent, text, range, access, anchor, gap)
-		local row = CreateSliderRow(parent, text, range, FormatSize, access.get, access.set)
+		local function get()
+			local value = access.get()
+			return value ~= nil and value or range.min
+		end
+		local row = CreateSliderRow(parent, text, range, FormatSize, get, access.set)
 		row:SetWidth(AURA_COLUMN_WIDTH)
 		row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or 0)
 		AddSync(row, row.Sync)
@@ -1049,6 +1055,8 @@ local function BuildAuras(page, left)
 	local iconSection = Section(standardPane, "Icons", columnA)
 	local iconSize = Slider(standardPane, "Icon size", ns.AuraIconSizeRange, Field("iconSize"), iconSection, -2)
 	local spacing = Slider(standardPane, "Spacing", ns.AuraSpacingRange, Field("spacing"), iconSize)
+	-- Groups that set the player's own auras apart give them their own size.
+	local ownSize = Slider(standardPane, "Your debuffs icon size", ns.AuraIconSizeRange, Field("ownIconSize"), spacing)
 	local growthRow = Choices(standardPane, "Growth", ns.AuraGrowths, Field("growth"), spacing)
 	local frameSize = Slider(standardPane, "Frame width", ns.AuraFrameSizeRange, Field("frameSize"), growthRow)
 
@@ -1150,10 +1158,12 @@ local function BuildAuras(page, left)
 		listPane:SetShown(isList)
 
 		-- Anchored groups take their growth and width from the frame they sit on.
+		local hasOwnSize = selected.hasOwnSize == true
 		growthRow:SetShown(not isAnchored)
 		frameSize:SetShown(not isAnchored)
+		ownSize:SetShown(hasOwnSize)
 		textSection:ClearAllPoints()
-		textSection:SetPoint("TOPLEFT", isAnchored and spacing or frameSize, "BOTTOMLEFT", 0, -6)
+		textSection:SetPoint("TOPLEFT", isAnchored and (hasOwnSize and ownSize or spacing) or frameSize, "BOTTOMLEFT", 0, -6)
 		if not isAnchored then
 			-- Growth that fills up or down first wraps at the frame's height instead.
 			local growth = ns.AuraGrowthsByKey[Get("growth")]

@@ -31,6 +31,8 @@ ns.Layout = {
 	-- The target wing slides from under the ring, so it's clipped where the bar first clears it.
 	-- Left of this it would show through the orb, which is see-through at rest.
 	wingClipInner = 51,
+	-- The clip reaches this far above the frame, so target debuffs stacked above the bar aren't cut off.
+	wingClipHeadroom = 400,
 
 	-- yCenter/height/tip: the visible bar outline. hitInner: where the click area starts.
 	-- fillInner/fillOuter: StatusBar span, measured from the orb centre.

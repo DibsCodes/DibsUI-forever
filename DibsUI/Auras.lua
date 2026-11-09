@@ -55,8 +55,9 @@ ns.AuraGroups = {
 	{ key = "playerShortBuffs", label = "Player short buffs", built = true, anchored = true,
 		anchorNote = "Sits above the player bar, as wide as it and clear of your name, and fills right, then up." },
 	{ key = "playerDebuffs", label = "Player debuffs" },
-	{ key = "targetBuffs", label = "Target buffs" },
-	{ key = "targetDebuffs", label = "Target debuffs" },
+	{ key = "targetBuffs", label = "Target buffs", built = true },
+	{ key = "targetDebuffs", label = "Target debuffs", built = true, anchored = true, hasOwnSize = true,
+		anchorNote = "Sits above the target bar, as wide as it and clear of its name and level, and fills right, then up. Your own debuffs come first, at their own size. Shows while you have a target." },
 }
 
 local function ByKey(list)
@@ -105,10 +106,31 @@ local GROUP_DEFAULTS = {
 		textSize = 10,
 		textColor = { 1, 0.82, 0 },
 	},
+	-- Under the target bar, past the orb's ring, filling right towards the end of the bar.
+	targetBuffs = {
+		enabled = true,
+		iconSize = 26,
+		spacing = 4,
+		growth = "RIGHT_DOWN",
+		frameSize = 200,
+		point = "TOPLEFT",
+		anchorTo = "orb",
+		anchorPoint = "CENTER",
+		x = 70,
+		y = -20,
+		textSize = 10,
+		textColor = { 1, 0.82, 0 },
+	},
+	-- The player's own debuffs on the target are larger, so they stand out.
+	targetDebuffs = {
+		enabled = true,
+		iconSize = 24,
+		ownIconSize = 32,
+		spacing = 4,
+		textSize = 10,
+		textColor = { 1, 0.82, 0 },
+	},
 }
-
--- The short buffs always fill from the bar's outer end, towards the orb, then up.
-local SHORT_BUFF_GROWTH = "RIGHT_UP"
 
 -- List mode's own settings, kept in a group's list table. The name is white and the time a
 -- little smaller and off-white. List mode has its own position, at the top left of the screen.
@@ -138,6 +160,7 @@ local LIST_RANGES = {
 
 local NUMBER_RANGES = {
 	iconSize = ns.AuraIconSizeRange,
+	ownIconSize = ns.AuraIconSizeRange,
 	spacing = ns.AuraSpacingRange,
 	frameSize = ns.AuraFrameSizeRange,
 	textSize = ns.AuraTextSizeRange,
@@ -295,6 +318,38 @@ local TEST_SHORT_BUFFS = {
 	{ name = "Sprint", icon = "Interface\\Icons\\Ability_Rogue_Sprint", duration = 15, remaining = 9 },
 }
 
+-- Buffs on the target, long and short together. stealable marks the ones the player could steal or purge.
+local TEST_TARGET_BUFFS = {
+	{ name = "Power Word: Fortitude", icon = "Interface\\Icons\\Spell_Holy_WordFortitude", duration = 1800, remaining = 1514 },
+	{ name = "Mark of the Wild", icon = "Interface\\Icons\\Spell_Nature_Regeneration", duration = 1800, remaining = 960, stealable = true },
+	{ name = "Blessing of Might", icon = "Interface\\Icons\\Spell_Holy_FistOfJustice", duration = 300, remaining = 212 },
+	{ name = "Renew", icon = "Interface\\Icons\\Spell_Holy_Renew", duration = 15, remaining = 11, stealable = true },
+	{ name = "Rejuvenation", icon = "Interface\\Icons\\Spell_Nature_Rejuvenation", duration = 12, remaining = 5 },
+	{ name = "Power Word: Shield", icon = "Interface\\Icons\\Spell_Holy_PowerWordShield", duration = 30, remaining = 24, stealable = true },
+	{ name = "Demon Skin", icon = "Interface\\Icons\\Spell_Shadow_RagingScream" },
+}
+
+-- Debuffs on the target: the player's own come first, at their own size. dispel names the border
+-- color Blizzard gives a debuff of that type.
+local TEST_TARGET_DEBUFFS = {
+	{ name = "Corruption", icon = "Interface\\Icons\\Spell_Shadow_AbominationExplosion", duration = 18, remaining = 14, own = true, dispel = "Magic" },
+	{ name = "Curse of Agony", icon = "Interface\\Icons\\Spell_Shadow_CurseOfSargeras", duration = 24, remaining = 20, own = true, dispel = "Curse" },
+	{ name = "Immolate", icon = "Interface\\Icons\\Spell_Fire_Immolation", duration = 15, remaining = 6, own = true, dispel = "Magic" },
+	{ name = "Sunder Armor", icon = "Interface\\Icons\\Ability_Warrior_Sunder", duration = 30, remaining = 22 },
+	{ name = "Faerie Fire", icon = "Interface\\Icons\\Spell_Nature_FaerieFire", duration = 40, remaining = 31, dispel = "Magic" },
+	{ name = "Rend", icon = "Interface\\Icons\\Ability_Gouge", duration = 21, remaining = 12 },
+	{ name = "Deadly Poison", icon = "Interface\\Icons\\Ability_Rogue_DualWeild", duration = 12, remaining = 8, dispel = "Poison" },
+	{ name = "Hamstring", icon = "Interface\\Icons\\Ability_ShockWave", duration = 15, remaining = 4 },
+}
+
+-- Blizzard's debuff type colors, for test debuffs. Real debuffs get theirs from Blizzard.
+local TEST_DISPEL_COLORS = {
+	Magic = { 0.2, 0.6, 1 },
+	Curse = { 0.6, 0, 1 },
+	Disease = { 0.6, 0.4, 0 },
+	Poison = { 0, 0.6, 0 },
+}
+
 -- Weapon enchants show at the start of the long buffs, main hand first, as on Blizzard's buff frame.
 local TEST_ENCHANTS = {
 	{ name = "Instant Poison", icon = "Interface\\Icons\\Ability_Poisons", duration = 1800, remaining = 1420 },
@@ -306,6 +361,28 @@ ns.auraTestMode = false
 -- Masque, when it's installed, can skin the icons. Each group is its own group in Masque's settings.
 -- It's looked up at login, once every addon has loaded, whatever order they loaded in.
 ns.hasMasque = false
+
+-- How each group is put together: the unit and auras it shows, and the bar an anchored group sits
+-- on, clear of that bar's texts. A group's container holds one or more aura groups, each with its own
+-- icon size setting; groups without a list show their filter's buffs in one.
+local GROUP_SPECS = {
+	playerLongBuffs = { unit = "player", filter = "HELPFUL", enchants = true },
+	-- Short buffs fill from the bar's outer end, towards the orb, then up.
+	playerShortBuffs = { unit = "player", filter = "HELPFUL", growth = "RIGHT_UP", bar = "DibsUIPlayerHealth", texts = { "playerName" } },
+	-- Every buff on the target, long or short, placed like the long buffs. Buffs the player can steal or
+	-- purge glow, as on Blizzard's target frame.
+	targetBuffs = { unit = "target", filter = "HELPFUL", stealable = true },
+	-- The player's own debuffs come first, at their own size, then everyone else's. Borders take the
+	-- debuff type's color.
+	targetDebuffs = {
+		unit = "target", filter = "HARMFUL", growth = "RIGHT_UP", bar = "DibsUITargetHealth",
+		texts = { "targetName", "targetLevel" }, dispel = true,
+		auraGroups = {
+			{ name = "own", sizeField = "ownIconSize", filters = { isFromPlayerOrPlayerPet = true } },
+			{ name = "others", sizeField = "iconSize", filters = { isFromPlayerOrPlayerPet = false } },
+		},
+	},
+}
 
 local groups = {}
 
@@ -399,15 +476,20 @@ local function LearnBuffs()
 end
 
 -- What a group's container lets through: long buffs take the list's spells and short buffs the rest,
--- and either takes every buff while the other is off.
+-- and either takes every buff while the other is off. Target buffs take every buff.
 local function GetCandidateFilters(groupKey)
 	if groupKey == "playerLongBuffs" then
 		return IsGroupEnabled("playerShortBuffs") and { includeSpellIDs = longSpells } or nil
+	elseif groupKey == "playerShortBuffs" then
+		return IsGroupEnabled("playerLongBuffs") and { excludeSpellIDs = longSpells } or nil
 	end
-	return IsGroupEnabled("playerLongBuffs") and { excludeSpellIDs = longSpells } or nil
+	return nil
 end
 
 local function GetReadableCount(groupKey)
+	if groupKey ~= "playerLongBuffs" and groupKey ~= "playerShortBuffs" then
+		return 1
+	end
 	local otherKey = groupKey == "playerLongBuffs" and "playerShortBuffs" or "playerLongBuffs"
 	if not IsGroupEnabled(otherKey) then
 		return readableCounts.all
@@ -433,7 +515,8 @@ local function AddTestBuffs(list, buffs)
 				expiration = expiration + buff.duration
 			end
 		end
-		list[#list + 1] = { name = buff.name, icon = buff.icon, duration = buff.duration, expiration = expiration, order = #list + 1 }
+		list[#list + 1] = { name = buff.name, icon = buff.icon, duration = buff.duration, expiration = expiration, order = #list + 1,
+			own = buff.own, dispel = buff.dispel, stealable = buff.stealable }
 	end
 end
 
@@ -441,6 +524,13 @@ local function ReadTestBuffs(groupKey)
 	local list = {}
 	local function Add(buffs)
 		AddTestBuffs(list, buffs)
+	end
+	if groupKey == "targetDebuffs" then
+		Add(TEST_TARGET_DEBUFFS)
+		return list
+	elseif groupKey == "targetBuffs" then
+		Add(TEST_TARGET_BUFFS)
+		return list
 	end
 	local isLong = groupKey == "playerLongBuffs"
 	local otherKey = isLong and "playerShortBuffs" or "playerLongBuffs"
@@ -455,8 +545,12 @@ end
 
 -- Soonest to expire first, or the longest first in list mode. Buffs that never expire count as the
 -- longest. Ties keep the order they were applied in. Blizzard's containers sort real buffs the same way.
+-- The player's own debuffs are their own group, ahead of the rest.
 local function SortBuffs(list, longestFirst)
 	table.sort(list, function(a, b)
+		if (a.own == true) ~= (b.own == true) then
+			return a.own == true
+		end
 		if a.expiration ~= b.expiration then
 			if longestFirst then
 				return a.expiration > b.expiration
@@ -469,12 +563,29 @@ end
 
 -- Icons -----------------------------------------------------------------------------------------
 
+-- Blizzard's own glow for buffs the player can steal or purge, a little larger than the icon.
+local STEALABLE_TEXTURE = "Interface\\TargetingFrame\\UI-TargetingFrame-Stealable"
+local STEALABLE_SCALE = 1.15
+
 -- The textures and texts DibsUI puts on a button, whether it's a test icon or one of Blizzard's.
-local function CreateParts(button)
+local function CreateParts(button, withDispel, withStealable)
 	local parts = { button = button }
+	if withStealable then
+		parts.stealable = button:CreateTexture(nil, "OVERLAY", nil, -1)
+		parts.stealable:SetTexture(STEALABLE_TEXTURE)
+		parts.stealable:SetBlendMode("ADD")
+		parts.stealable:SetPoint("CENTER")
+		parts.stealable:Hide()
+	end
 	parts.border = button:CreateTexture(nil, "BACKGROUND", nil, -8)
 	parts.border:SetAllPoints()
 	parts.border:SetColorTexture(0, 0, 0, 1)
+	-- Over the black border, colored by debuff type where a debuff has one.
+	if withDispel then
+		parts.dispel = button:CreateTexture(nil, "BACKGROUND", nil, -7)
+		parts.dispel:SetColorTexture(1, 1, 1, 1)
+		parts.dispel:Hide()
+	end
 	parts.icon = button:CreateTexture(nil, "ARTWORK")
 	-- Every text gets a font straight away, since Blizzard fills them in as soon as they're handed over.
 	parts.count = button:CreateFontString(nil, "OVERLAY")
@@ -544,16 +655,27 @@ local function StyleParts(group, mode, parts)
 	local isList = mode == "list"
 	local style = isList and settings.list or settings
 	local button = parts.button
-	button:SetSize(style.iconSize, style.iconSize)
-	parts.size = style.iconSize
+	local size = style[parts.sizeField or "iconSize"]
+	button:SetSize(size, size)
+	parts.size = size
 	-- The reskin comes with the next refresh of every group.
 	TellMasqueSize(group, parts, false)
-	if IsMasqueSkinned(group) then
+	local skinned = IsMasqueSkinned(group)
+	if skinned then
 		parts.border:Hide()
 	else
 		ApplyOwnSkin(parts)
 	end
-	parts.count:SetFont(ns.Text.font, math.max(math.floor(style.iconSize * 0.4), 8), "OUTLINE")
+	-- Blizzard shows and colors the debuff type border itself. Under a skin it's tucked behind the icon,
+	-- since its visibility belongs to Blizzard.
+	if parts.dispel then
+		parts.dispel:ClearAllPoints()
+		parts.dispel:SetAllPoints(skinned and parts.icon or button)
+	end
+	if parts.stealable then
+		parts.stealable:SetSize(size * STEALABLE_SCALE, size * STEALABLE_SCALE)
+	end
+	parts.count:SetFont(ns.Text.font, math.max(math.floor(size * 0.4), 8), "OUTLINE")
 	parts.time:ClearAllPoints()
 	parts.name:ClearAllPoints()
 	if isList then
@@ -604,7 +726,7 @@ local function CreateTestIcon(group)
 	local button = CreateFrame("Button", nil, group.holder)
 	button:SetScript("OnEnter", OnTestIconEnter)
 	button:SetScript("OnLeave", OnTestIconLeave)
-	local parts = CreateParts(button)
+	local parts = CreateParts(button, group.spec.dispel, group.spec.stealable)
 	parts.isTest = true
 	parts.binding = C_DurationUtil.CreateDurationTextBinding()
 	parts.binding:SetFontString(parts.time)
@@ -627,6 +749,16 @@ local function ShowTestAura(parts, data)
 	end
 	parts.binding:SetDuration(parts.duration)
 	parts.binding:SetEnabled(true)
+	if parts.dispel then
+		local color = TEST_DISPEL_COLORS[data.dispel]
+		parts.dispel:SetShown(color ~= nil)
+		if color then
+			parts.dispel:SetVertexColor(color[1], color[2], color[3])
+		end
+	end
+	if parts.stealable then
+		parts.stealable:SetShown(data.stealable == true)
+	end
 end
 
 -- Layout ------------------------------------------------------------------------------------------
@@ -634,9 +766,15 @@ end
 local FLOW_AXIS = { horizontal = 0, vertical = 1 }
 local FLOW_DIRECTION = { LEFT = -1, RIGHT = 1, UP = 1, DOWN = -1 }
 
--- The short buffs are as wide as the player bar.
-local function GetPlayerBody()
-	return DibsUIPlayerHealth and DibsUIPlayerHealth.body
+-- The visible body of the bar an anchored group sits on, which sets its width.
+local function GetBarBody(group)
+	local bar = group.spec.bar and _G[group.spec.bar]
+	return bar and bar.body
+end
+
+-- The aura groups in a group's container, with what each lets through right now.
+local function GetAuraGroups(group)
+	return group.spec.auraGroups or { { name = "buffs", sizeField = "iconSize", filters = GetCandidateFilters(group.key) } }
 end
 
 -- How a group's icons are laid out. The same numbers drive Blizzard's container and the test icons,
@@ -651,26 +789,28 @@ local function GetLayout(group, mode)
 		layout.vertical = true
 		layout.anchor = left and "TOPLEFT" or "TOPRIGHT"
 		layout.signX, layout.signY = left and 1 or -1, -1
+		layout.isList = true
 		layout.width = list.iconSize + LIST_TEXT_GAP + LIST_TEXT_WIDTH
 		layout.height = list.iconSize
 		layout.spacing = list.spacing
 		layout.lineSize = math.huge
 		layout.padY = 0
 	else
-		local growthKey = group.key == "playerShortBuffs" and SHORT_BUFF_GROWTH or settings.growth
+		local growthKey = group.spec.growth or settings.growth
 		local growth = ns.AuraGrowthsByKey[growthKey]
 		local function Has(direction)
 			return growth.line == direction or growth.wrap == direction
 		end
 		local textHeight = TIME_GAP + settings.textSize + 1
+		layout.textHeight = textHeight
 		layout.vertical = growth.line == "UP" or growth.line == "DOWN"
 		layout.anchor = (Has("UP") and "BOTTOM" or "TOP") .. (Has("LEFT") and "RIGHT" or "LEFT")
 		layout.signX, layout.signY = Has("LEFT") and -1 or 1, Has("UP") and 1 or -1
 		layout.width = settings.iconSize
 		layout.height = settings.iconSize + textHeight
 		layout.spacing = settings.spacing
-		if group.key == "playerShortBuffs" then
-			local body = GetPlayerBody()
+		if group.spec.bar then
+			local body = GetBarBody(group)
 			layout.lineSize = body and body:GetWidth() or 200
 		else
 			layout.lineSize = settings.frameSize
@@ -682,6 +822,14 @@ local function GetLayout(group, mode)
 	return layout
 end
 
+-- The space a buff with an icon of this size takes.
+local function GetElementSize(layout, size)
+	if layout.isList then
+		return size + LIST_TEXT_GAP + LIST_TEXT_WIDTH, size
+	end
+	return size, size + layout.textHeight
+end
+
 local function GetPerLine(layout, count)
 	if layout.lineSize == math.huge then
 		return math.max(count, 1)
@@ -690,18 +838,29 @@ local function GetPerLine(layout, count)
 	return math.max(math.floor((layout.lineSize + layout.spacing) / (primary + layout.spacing)), 1)
 end
 
--- Where the nth buff goes from the group's starting corner, the way Blizzard's flow layout places it.
-local function GetElementOffset(layout, index, perLine)
-	local along, across = (index - 1) % perLine, math.floor((index - 1) / perLine)
-	local primaryStep = (layout.vertical and layout.height or layout.width) + layout.spacing
-	local crossStep = (layout.vertical and layout.width or layout.height) + layout.spacing
-	local x, y
-	if layout.vertical then
-		x, y = across * crossStep, along * primaryStep
-	else
-		x, y = along * primaryStep, across * crossStep
+-- Where each buff goes from the group's starting corner, given its icon size, step for step the way
+-- Blizzard's flow layout places them: a line wraps when the next buff won't fit, and a new line starts
+-- past the tallest buff on the last.
+local function GetFlowOffsets(layout, sizes)
+	local offsets = {}
+	local cursor, cross, lineLength, lineDepth = 0, 0, 0, 0
+	for i, size in ipairs(sizes) do
+		local width, height = GetElementSize(layout, size)
+		local along, across = layout.vertical and height or width, layout.vertical and width or height
+		if lineLength > 0 and lineLength + along > layout.lineSize then
+			cursor, cross = 0, cross + lineDepth + layout.spacing
+			lineLength, lineDepth = 0, 0
+		end
+		local x, y = cursor, cross
+		if layout.vertical then
+			x, y = cross, cursor
+		end
+		offsets[i] = { layout.signX * x, layout.signY * (layout.padY + y) }
+		cursor = cursor + along + layout.spacing
+		lineLength = lineLength + along + layout.spacing
+		lineDepth = math.max(lineDepth, across)
 	end
-	return layout.signX * x, layout.signY * (layout.padY + y)
+	return offsets
 end
 
 -- The holder is the frame's own outline: as long as its size setting along the way lines fill, and as
@@ -725,40 +884,49 @@ local function SizeHolder(group, layout, count)
 end
 
 local function LayoutTestIcons(group, layout, count)
-	local perLine = GetPerLine(layout, count)
+	local sizes = {}
 	for i = 1, count do
+		sizes[i] = group.testIcons[i].size
+	end
+	for i, offset in ipairs(GetFlowOffsets(layout, sizes)) do
 		local button = group.testIcons[i].button
-		local x, y = GetElementOffset(layout, i, perLine)
 		button:ClearAllPoints()
-		button:SetPoint(layout.anchor, group.holder, layout.anchor, x, y)
+		button:SetPoint(layout.anchor, group.holder, layout.anchor, offset[1], offset[2])
 	end
 end
 
 local ENCHANTS_BEFORE_BUFFS = 0
 
--- Weapon enchants are their own group in the layout, ahead of the buffs, and the buffs carry on from
--- them along the same line. The flow layout already leaves the spacing after each icon, so the
--- groups need no gap of their own.
-local function ConfigureContainer(container, layout, hasEnchants)
+-- Each aura group takes buffs of its own icon size. Weapon enchants are their own group too, ahead of
+-- the buffs, and each group carries on from the last along the same line. The flow layout already
+-- leaves the spacing after each icon, so the groups need no gap of their own.
+local function ConfigureContainer(container, layout, group)
 	container:SetFlowLayoutAxis(layout.vertical and FLOW_AXIS.vertical or FLOW_AXIS.horizontal)
 	container:SetFlowLayoutGrowthDirection(layout.signX > 0 and FLOW_DIRECTION.RIGHT or FLOW_DIRECTION.LEFT,
 		layout.signY > 0 and FLOW_DIRECTION.UP or FLOW_DIRECTION.DOWN)
 	container:SetFlowLayoutAnchorPoint(layout.anchor)
 	container:SetFlowLayoutPadding(0, 0, 0, layout.padY)
 	container:SetFlowLayoutMaximumLineSize(layout.lineSize)
-	local groupLayout = {
-		elementSpacing = layout.spacing,
-		lineSpacing = layout.spacing,
-		groupSpacing = 0,
-		groupLineSpacing = layout.spacing,
-		elementWidth = layout.width,
-		elementHeight = layout.height,
-	}
-	container:SetAuraGroupLayout("buffs", groupLayout)
-	if hasEnchants then
+	local style = layout.isList and group.settings.list or group.settings
+	local function GroupLayout(size)
+		local width, height = GetElementSize(layout, size)
+		return {
+			elementSpacing = layout.spacing,
+			lineSpacing = layout.spacing,
+			groupSpacing = 0,
+			groupLineSpacing = layout.spacing,
+			elementWidth = width,
+			elementHeight = height,
+		}
+	end
+	for _, auraGroup in ipairs(GetAuraGroups(group)) do
+		container:SetAuraGroupLayout(auraGroup.name, GroupLayout(style[auraGroup.sizeField]))
+	end
+	if group.spec.enchants then
+		local enchantLayout = GroupLayout(style.iconSize)
 		local placement = CustomAuraContainerItemEnchantmentPlacement
-		groupLayout.placement = placement and placement.BeforeAuraGroups or ENCHANTS_BEFORE_BUFFS
-		container:SetItemEnchantmentLayout(groupLayout)
+		enchantLayout.placement = placement and placement.BeforeAuraGroups or ENCHANTS_BEFORE_BUFFS
+		container:SetItemEnchantmentLayout(enchantLayout)
 	end
 end
 
@@ -788,23 +956,27 @@ local function GetPosition(settings)
 	return IsListMode(settings) and settings.list or settings
 end
 
--- How far above the player bar the short buffs sit: clear of the name's line while the name is on.
--- The name's height is taken from its font size, since a name's own measurements can be secret.
-local function GetNameClearance()
-	if not ns.GetTextOption("playerName", "enabled") then
-		return NAME_CLEARANCE
+-- How far above its bar an anchored group sits: clear of the texts on top of the bar, such as a name
+-- and level, while they're on. A text's height is taken from its font size, since a name's own
+-- measurements can be secret.
+local function GetTextClearance(keys)
+	local clearance = 0
+	for _, key in ipairs(keys) do
+		if ns.GetTextOption(key, "enabled") then
+			local top = ns.Text[key].y + ns.GetTextOption(key, "offsetY") + ns.GetTextOption(key, "size") + 2
+			clearance = math.max(clearance, top)
+		end
 	end
-	local spec = ns.Text.playerName
-	return spec.y + ns.GetTextOption("playerName", "offsetY") + ns.GetTextOption("playerName", "size") + 2 + NAME_CLEARANCE
+	return clearance + NAME_CLEARANCE
 end
 
 local function PlaceHolder(group)
 	local holder = group.holder
 	holder:ClearAllPoints()
-	if group.key == "playerShortBuffs" then
-		local body = GetPlayerBody()
+	if group.spec.bar then
+		local body = GetBarBody(group)
 		if body then
-			holder:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", 0, GetNameClearance())
+			holder:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", 0, GetTextClearance(group.spec.texts))
 		end
 		return
 	end
@@ -846,6 +1018,7 @@ local function ShowTestIcons(group, mode, layout)
 			group.testIcons[i] = parts
 			AddToMasque(group, parts)
 		end
+		parts.sizeField = data.own and "ownIconSize" or "iconSize"
 		StyleParts(group, mode, parts)
 		ShowTestAura(parts, data)
 		parts.button:Show()
@@ -896,15 +1069,16 @@ local function UpdateGroup(group)
 	else
 		HideTestIcons(group)
 		local container = group.containers[mode]
-		local hasEnchants = group.key == "playerLongBuffs"
 		if container then
-			ConfigureContainer(container, layout, hasEnchants)
-			container:SetAuraGroupCandidateFilters("buffs", GetCandidateFilters(group.key))
+			ConfigureContainer(container, layout, group)
+			for _, auraGroup in ipairs(GetAuraGroups(group)) do
+				container:SetAuraGroupCandidateFilters(auraGroup.name, auraGroup.filters)
+			end
 			container:ClearAllPoints()
 			container:SetPoint(layout.anchor, group.holder, layout.anchor)
 		end
 		count = GetReadableCount(group.key)
-		if hasEnchants and not AreAurasSecret() then
+		if group.spec.enchants and not AreAurasSecret() then
 			count = count + CountWeaponEnchants()
 		end
 	end
@@ -1042,12 +1216,38 @@ end
 -- Sets up one of Blizzard's buttons the moment the container makes it. Blizzard keeps it filled in
 -- from then on: icon, stack count, time, and the name in list mode. Its tooltip and right-click to
 -- cancel are Blizzard's own.
-local function InitContainerButton(group, mode, button)
+local DISPEL_PRESERVE_ASSET = 3
+local DISPEL_CUSTOM_ASSET, ONLY_STEALABLE = 4, 0
+
+-- Blizzard shows the stealable glow itself, on the buffs whose aura data says the player can steal or
+-- purge them, which stays secret in combat. It's a dispel type texture limited to stealable buffs,
+-- with the glow as its asset for every dispel type and none.
+local function AddStealableTexture(button, texture)
+	local styles = Enum.CustomAuraButtonDispelTypeTextureStyle
+	local filters = Enum.CustomAuraButtonDispelTypeStealableFilter
+	local glow = { asset = STEALABLE_TEXTURE }
+	button:AddDispelTypeTexture(texture, {
+		showWhenHelpful = true,
+		showWhenHarmful = false,
+		showWithoutDispelType = true,
+		stealableFilter = filters and filters.Stealable or ONLY_STEALABLE,
+		style = styles and styles.CustomAsset or DISPEL_CUSTOM_ASSET,
+		customDispelAssetMap = { Magic = glow, Curse = glow, Disease = glow, Poison = glow, Enrage = glow, None = glow },
+	})
+end
+
+local function InitContainerButton(group, mode, button, sizeField)
 	local ok, err = pcall(function()
-		local parts = CreateParts(button)
+		local parts = CreateParts(button, group.spec.dispel, group.spec.stealable)
 		parts.isContainer = true
+		parts.sizeField = sizeField
 		button:SetIcon(parts.icon)
 		button:SetApplicationCount(parts.count)
+		-- Blizzard colors the border texture by debuff type, as on its own target frame.
+		if parts.dispel then
+			local styles = Enum.CustomAuraButtonDispelTypeTextureStyle
+			button:AddDispelTypeTexture(parts.dispel, { style = styles and styles.PreserveAsset or DISPEL_PRESERVE_ASSET })
+		end
 		if mode == "list" then
 			button:SetSpellName(parts.name)
 		else
@@ -1058,6 +1258,10 @@ local function InitContainerButton(group, mode, button)
 		records[#records + 1] = parts
 		StyleParts(group, mode, parts)
 		AddToMasque(group, parts)
+		-- Last, so the button is still set up if the client turns the glow's options down.
+		if parts.stealable then
+			AddStealableTexture(button, parts.stealable)
+		end
 	end)
 	if not ok then
 		geterrorhandler()(err)
@@ -1077,25 +1281,27 @@ local function CreateContainer(group, mode)
 	end
 	group.records[mode] = {}
 	container:Hide()
-	container:SetUnit("player")
+	container:SetUnit(group.spec.unit)
 	local sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.ExpirationOnly or SORT_EXPIRATION_ONLY
 	local directions = AuraContainerSortDirection or { Normal = SORT_NORMAL, Reverse = SORT_REVERSE }
-	container:AddAuraGroup("buffs", "HELPFUL", {
-		sortMethod = sortMethod,
-		sortDirection = mode == "list" and directions.Reverse or directions.Normal,
-		candidateFilters = GetCandidateFilters(group.key),
-		initializeFrame = function(button)
-			InitContainerButton(group, mode, button)
-		end,
-	})
+	for _, auraGroup in ipairs(GetAuraGroups(group)) do
+		container:AddAuraGroup(auraGroup.name, group.spec.filter, {
+			sortMethod = sortMethod,
+			sortDirection = mode == "list" and directions.Reverse or directions.Normal,
+			candidateFilters = auraGroup.filters,
+			initializeFrame = function(button)
+				InitContainerButton(group, mode, button, auraGroup.sizeField)
+			end,
+		})
+	end
 	-- The long buffs also show weapon enchants: main hand, off hand and ranged. Blizzard fills them in
 	-- and cancels them on right-click, as with buffs. In list mode the name is the weapon's.
-	if group.key == "playerLongBuffs" then
+	if group.spec.enchants then
 		local slots = AuraContainerItemEnchantmentSlot or { MainHand = 0, OffHand = 1, Ranged = 2 }
 		for _, slot in ipairs({ slots.MainHand, slots.OffHand, slots.Ranged }) do
 			local added, err = pcall(container.AddItemEnchantment, container, slot, {
 				initializeFrame = function(button)
-					InitContainerButton(group, mode, button)
+					InitContainerButton(group, mode, button, "iconSize")
 				end,
 			})
 			if not added then
@@ -1113,6 +1319,8 @@ local function CreateContainers()
 	CreateContainer(groups.playerLongBuffs, "standard")
 	CreateContainer(groups.playerLongBuffs, "list")
 	CreateContainer(groups.playerShortBuffs, "standard")
+	CreateContainer(groups.targetBuffs, "standard")
+	CreateContainer(groups.targetDebuffs, "standard")
 end
 
 local function SetUpMasque()
@@ -1146,6 +1354,7 @@ local function CreateGroup(key, label, parent)
 		label = label,
 		holder = holder,
 		settings = ns.db.auras[key],
+		spec = GROUP_SPECS[key],
 		containers = {},
 		records = {},
 		testIcons = {},
@@ -1163,27 +1372,40 @@ end
 function ns.CreateAuraFrames()
 	RebuildLongSpells()
 
-	local long = CreateGroup("playerLongBuffs", "Player long buffs", UIParent)
-	long.holder:SetFrameStrata("LOW")
-	long.holder:SetMovable(true)
-	long.holder:SetClampedToScreen(true)
-	long.holder:SetDontSavePosition(true)
-	long.mover = CreateMover(long)
+	-- Groups placed by their settings, which can be dragged while the frames are unlocked.
+	local function CreatePlacedGroup(key, label)
+		local group = CreateGroup(key, label, UIParent)
+		group.holder:SetFrameStrata("LOW")
+		group.holder:SetMovable(true)
+		group.holder:SetClampedToScreen(true)
+		group.holder:SetDontSavePosition(true)
+		group.mover = CreateMover(group)
+	end
+	CreatePlacedGroup("playerLongBuffs", "Player long buffs")
+	-- The target's buffs stay put without a target, empty, so the frame can still be moved.
+	CreatePlacedGroup("targetBuffs", "Target buffs")
 
 	-- The short buffs ride on the player bar, so they scale with DibsUI, but they keep full opacity
 	-- while the bars fade, like the long buffs.
 	local short = CreateGroup("playerShortBuffs", "Player short buffs", ns.root)
 	short.holder:SetIgnoreParentAlpha(true)
 
-	-- The short buffs follow the player bar's width and the name above it.
-	local function RefreshShortBuffs()
-		if groups.playerShortBuffs.settings then
-			UpdateGroup(groups.playerShortBuffs)
+	-- Target debuffs ride on the target bar's sliding wing, so they slide in and out with it, are cut off
+	-- at the orb the same way, and hide with it while there's no target.
+	local targetDebuffs = CreateGroup("targetDebuffs", "Target debuffs", DibsUITargetHealth.body:GetParent())
+	targetDebuffs.holder:SetIgnoreParentAlpha(true)
+
+	-- Anchored groups follow their bar's width and the texts above it.
+	local function RefreshAnchoredGroups()
+		for _, group in pairs(groups) do
+			if group.spec.bar and group.settings then
+				UpdateGroup(group)
+			end
 		end
 	end
-	hooksecurefunc(ns, "UpdateBarWidths", RefreshShortBuffs)
-	hooksecurefunc(ns, "SetTextStyle", RefreshShortBuffs)
-	hooksecurefunc(ns, "RefreshAllText", RefreshShortBuffs)
+	hooksecurefunc(ns, "UpdateBarWidths", RefreshAnchoredGroups)
+	hooksecurefunc(ns, "SetTextStyle", RefreshAnchoredGroups)
+	hooksecurefunc(ns, "RefreshAllText", RefreshAnchoredGroups)
 
 	local events = CreateFrame("Frame")
 	events:RegisterEvent("PLAYER_LOGIN")
@@ -1191,6 +1413,7 @@ function ns.CreateAuraFrames()
 	events:RegisterEvent("PLAYER_ENTERING_WORLD")
 	events:RegisterEvent("PLAYER_REGEN_DISABLED")
 	events:RegisterEvent("PLAYER_REGEN_ENABLED")
+	events:RegisterEvent("PLAYER_TARGET_CHANGED")
 	events:SetScript("OnEvent", function(_, event)
 		if event == "PLAYER_LOGIN" then
 			CreateContainers()
@@ -1202,6 +1425,15 @@ function ns.CreateAuraFrames()
 			if LearnBuffs() and not ns.auraTestMode then
 				for _, group in pairs(groups) do
 					UpdateGroup(group)
+				end
+			end
+		elseif event == "PLAYER_TARGET_CHANGED" then
+			-- Blizzard's containers follow aura changes, but a new target is DibsUI's to announce.
+			for _, group in pairs(groups) do
+				if group.spec.unit == "target" then
+					for _, container in pairs(group.containers) do
+						container:UpdateAllAuras()
+					end
 				end
 			end
 		elseif event == "PLAYER_REGEN_DISABLED" then
