@@ -1,0 +1,10 @@
+# CurseForge packaging. The addon's files sit at the root of the repository, so the package is a single
+# DibsUI folder holding them. Screenshots are for the README and the project page, not the game.
+package-as: DibsUI
+
+ignore:
+  - screenshots
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown

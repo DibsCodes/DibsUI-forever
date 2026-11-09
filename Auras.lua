@@ -15,6 +15,8 @@ ns.AuraSpacingRange = { min = 0, max = 20, step = 1 }
 ns.AuraFrameSizeRange = { min = 40, max = 1200, step = 1 }
 ns.AuraTextSizeRange = { min = 6, max = 24, step = 1 }
 ns.AuraOffsetRange = { min = -2000, max = 2000, step = 1 }
+-- Moves a buff's time or name text from where it normally sits. Positive Y is up.
+ns.AuraTextOffsetRange = { min = -50, max = 50, step = 1 }
 
 ns.AuraPoints = {
 	{ key = "TOPLEFT", label = "Top left" },
@@ -46,6 +48,8 @@ ns.AuraAnchorTargets = {
 	{ key = "root", label = "DibsUI frames" },
 	{ key = "orb", label = "DibsUI orb" },
 	{ key = "minimap", label = "Minimap" },
+	-- Moves up above the pet bar and its name while there's a pet.
+	{ key = "player", label = "DibsUI player bar" },
 }
 
 -- The five groups the settings list. Only the ones marked built exist so far. Anchored groups sit on a
@@ -54,7 +58,7 @@ ns.AuraGroups = {
 	{ key = "playerLongBuffs", label = "Player long buffs", built = true, hasListMode = true },
 	{ key = "playerShortBuffs", label = "Player short buffs", built = true, anchored = true,
 		anchorNote = "Sits above the player bar, as wide as it and clear of your name, and fills right, then up." },
-	{ key = "playerDebuffs", label = "Player debuffs" },
+	{ key = "playerDebuffs", label = "Player debuffs", built = true, hasListMode = true },
 	{ key = "targetBuffs", label = "Target buffs", built = true },
 	{ key = "targetDebuffs", label = "Target debuffs", built = true, anchored = true, hasOwnSize = true,
 		anchorNote = "Sits above the target bar, as wide as it and clear of its name and level, and fills right, then up. Your own debuffs come first, at their own size. Shows while you have a target." },
@@ -68,10 +72,10 @@ local function ByKey(list)
 	return index
 end
 
--- Player long buffs can also show as a list, with its own settings.
+-- Player long buffs and debuffs can also show as a list, with its own settings.
 ns.AuraModes = {
 	{ key = "standard", label = "Standard", description = "A grid of icons with the time under each." },
-	{ key = "list", label = "List", description = "One buff per line, longest at the top, with its name and time beside the icon." },
+	{ key = "list", label = "List", description = "One per line, longest at the top, with the name and time beside each icon." },
 }
 
 ns.AuraModesByKey = ByKey(ns.AuraModes)
@@ -97,6 +101,8 @@ local GROUP_DEFAULTS = {
 		y = 0,
 		textSize = 11,
 		textColor = { 1, 0.82, 0 },
+		textX = 0,
+		textY = 0,
 		mode = "standard",
 	},
 	playerShortBuffs = {
@@ -105,6 +111,26 @@ local GROUP_DEFAULTS = {
 		spacing = 4,
 		textSize = 10,
 		textColor = { 1, 0.82, 0 },
+		textX = 0,
+		textY = 0,
+	},
+	-- Beside the player bar's outer end, filling up. List mode is the default and has its own place.
+	playerDebuffs = {
+		enabled = true,
+		iconSize = 28,
+		spacing = 4,
+		growth = "LEFT_UP",
+		frameSize = 200,
+		point = "BOTTOMRIGHT",
+		anchorTo = "player",
+		anchorPoint = "BOTTOMLEFT",
+		x = -4,
+		y = 0,
+		textSize = 11,
+		textColor = { 1, 0.82, 0 },
+		textX = 0,
+		textY = 0,
+		mode = "list",
 	},
 	-- Under the target bar, past the orb's ring, filling right towards the end of the bar.
 	targetBuffs = {
@@ -120,6 +146,8 @@ local GROUP_DEFAULTS = {
 		y = -20,
 		textSize = 10,
 		textColor = { 1, 0.82, 0 },
+		textX = 0,
+		textY = 0,
 	},
 	-- The player's own debuffs on the target are larger, so they stand out.
 	targetDebuffs = {
@@ -129,19 +157,27 @@ local GROUP_DEFAULTS = {
 		spacing = 4,
 		textSize = 10,
 		textColor = { 1, 0.82, 0 },
+		textX = 0,
+		textY = 0,
 	},
 }
 
 -- List mode's own settings, kept in a group's list table. The name is white and the time a
--- little smaller and off-white. List mode has its own position, at the top left of the screen.
+-- little smaller and off-white. List mode has its own position, at the top left of the screen, and
+-- grows down unless growUp is set.
 local LIST_DEFAULTS = {
 	iconSide = "LEFT",
+	growUp = false,
 	iconSize = 28,
 	spacing = 4,
 	nameSize = 13,
 	nameColor = { 1, 1, 1 },
 	timeSize = 11,
 	timeColor = { 0.88, 0.87, 0.82 },
+	nameX = 0,
+	nameY = 0,
+	timeX = 0,
+	timeY = 0,
 	point = "TOPLEFT",
 	anchorTo = "screen",
 	anchorPoint = "TOPLEFT",
@@ -149,11 +185,39 @@ local LIST_DEFAULTS = {
 	y = 0,
 }
 
+-- Where a group's list mode differs: the player's debuffs rise from beside the player bar, with the
+-- icons on the side nearest it.
+local LIST_OVERRIDES = {
+	playerDebuffs = {
+		iconSide = "RIGHT",
+		growUp = true,
+		point = "BOTTOMRIGHT",
+		anchorTo = "player",
+		anchorPoint = "BOTTOMLEFT",
+		x = -4,
+	},
+}
+
+local function GetListDefaults(groupKey)
+	local defaults = {}
+	for field, value in pairs(LIST_DEFAULTS) do
+		defaults[field] = value
+	end
+	for field, value in pairs(LIST_OVERRIDES[groupKey] or {}) do
+		defaults[field] = value
+	end
+	return defaults
+end
+
 local LIST_RANGES = {
 	iconSize = ns.AuraIconSizeRange,
 	spacing = ns.AuraSpacingRange,
 	nameSize = ns.AuraTextSizeRange,
 	timeSize = ns.AuraTextSizeRange,
+	nameX = ns.AuraTextOffsetRange,
+	nameY = ns.AuraTextOffsetRange,
+	timeX = ns.AuraTextOffsetRange,
+	timeY = ns.AuraTextOffsetRange,
 	x = ns.AuraOffsetRange,
 	y = ns.AuraOffsetRange,
 }
@@ -164,6 +228,8 @@ local NUMBER_RANGES = {
 	spacing = ns.AuraSpacingRange,
 	frameSize = ns.AuraFrameSizeRange,
 	textSize = ns.AuraTextSizeRange,
+	textX = ns.AuraTextOffsetRange,
+	textY = ns.AuraTextOffsetRange,
 	x = ns.AuraOffsetRange,
 	y = ns.AuraOffsetRange,
 }
@@ -206,7 +272,8 @@ local function CleanPosition(position, defaults)
 	end
 end
 
-local function CleanGroup(settings, defaults)
+local function CleanGroup(settings, groupKey)
+	local defaults = GROUP_DEFAULTS[groupKey]
 	CleanFields(settings, defaults, NUMBER_RANGES, { "font" })
 	if defaults.growth and not ns.AuraGrowthsByKey[settings.growth] then
 		settings.growth = defaults.growth
@@ -221,11 +288,12 @@ local function CleanGroup(settings, defaults)
 		if type(settings.list) ~= "table" then
 			settings.list = {}
 		end
-		CleanFields(settings.list, LIST_DEFAULTS, LIST_RANGES, { "nameFont", "timeFont" })
+		local listDefaults = GetListDefaults(groupKey)
+		CleanFields(settings.list, listDefaults, LIST_RANGES, { "nameFont", "timeFont" })
 		if settings.list.iconSide ~= "LEFT" and settings.list.iconSide ~= "RIGHT" then
-			settings.list.iconSide = LIST_DEFAULTS.iconSide
+			settings.list.iconSide = listDefaults.iconSide
 		end
-		CleanPosition(settings.list, LIST_DEFAULTS)
+		CleanPosition(settings.list, listDefaults)
 	end
 end
 
@@ -239,9 +307,9 @@ function ns.CleanAuraSettings(auras)
 			auras[key] = nil
 		end
 	end
-	for key, defaults in pairs(GROUP_DEFAULTS) do
+	for key in pairs(GROUP_DEFAULTS) do
 		auras[key] = auras[key] or {}
-		CleanGroup(auras[key], defaults)
+		CleanGroup(auras[key], key)
 	end
 	return auras
 end
@@ -267,6 +335,8 @@ local function GetAnchorTarget(key)
 		return DibsUIOrb
 	elseif key == "minimap" then
 		return Minimap
+	elseif key == "player" then
+		return ns.playerAuraAnchor or UIParent
 	end
 	return UIParent
 end
@@ -329,6 +399,16 @@ local TEST_TARGET_BUFFS = {
 	{ name = "Demon Skin", icon = "Interface\\Icons\\Spell_Shadow_RagingScream" },
 }
 
+-- Debuffs on the player, one of each type and two with none.
+local TEST_PLAYER_DEBUFFS = {
+	{ name = "Curse of Weakness", icon = "Interface\\Icons\\Spell_Shadow_CurseOfMannoroth", duration = 120, remaining = 84, dispel = "Curse" },
+	{ name = "Corruption", icon = "Interface\\Icons\\Spell_Shadow_AbominationExplosion", duration = 18, remaining = 13, dispel = "Magic" },
+	{ name = "Deadly Poison", icon = "Interface\\Icons\\Ability_Rogue_DualWeild", duration = 12, remaining = 7, dispel = "Poison" },
+	{ name = "Mortal Strike", icon = "Interface\\Icons\\Ability_Warrior_SavageBlow", duration = 10, remaining = 4 },
+	{ name = "Plague", icon = "Interface\\Icons\\Spell_Shadow_CallofBone", duration = 180, remaining = 140, dispel = "Disease" },
+	{ name = "Resurrection Sickness", icon = "Interface\\Icons\\Spell_Shadow_DeathScream", duration = 600, remaining = 410 },
+}
+
 -- Debuffs on the target: the player's own come first, at their own size. dispel names the border
 -- color Blizzard gives a debuff of that type.
 local TEST_TARGET_DEBUFFS = {
@@ -369,6 +449,8 @@ local GROUP_SPECS = {
 	playerLongBuffs = { unit = "player", filter = "HELPFUL", enchants = true },
 	-- Short buffs fill from the bar's outer end, towards the orb, then up.
 	playerShortBuffs = { unit = "player", filter = "HELPFUL", growth = "RIGHT_UP", bar = "DibsUIPlayerHealth", texts = { "playerName" } },
+	-- Every debuff on the player, placed like the long buffs, with borders in the debuff type's color.
+	playerDebuffs = { unit = "player", filter = "HARMFUL", dispel = true },
 	-- Every buff on the target, long or short, placed like the long buffs. Buffs the player can steal or
 	-- purge glow, as on Blizzard's target frame.
 	targetBuffs = { unit = "target", filter = "HELPFUL", stealable = true },
@@ -402,6 +484,22 @@ end
 
 local function GetMode(group)
 	return IsListMode(group.settings) and "list" or "standard"
+end
+
+-- A list shows the longest at the top, so one growing down starts with the longest and one growing up
+-- with the soonest to expire. Elsewhere the soonest comes first. Auras that never expire count as the
+-- longest either way.
+local function IsLongestFirst(group, mode)
+	return mode == "list" and not group.settings.list.growUp
+end
+
+local SORT_EXPIRATION_ONLY = 5
+local SORT_NORMAL, SORT_REVERSE = 0, 1
+
+local function GetSortOptions(group, mode)
+	local sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.ExpirationOnly or SORT_EXPIRATION_ONLY
+	local directions = AuraContainerSortDirection or { Normal = SORT_NORMAL, Reverse = SORT_REVERSE }
+	return sortMethod, IsLongestFirst(group, mode) and directions.Reverse or directions.Normal
 end
 
 -- While aura details are secret, in combat and in some instances, addon code can't read the player's
@@ -530,6 +628,9 @@ local function ReadTestBuffs(groupKey)
 		return list
 	elseif groupKey == "targetBuffs" then
 		Add(TEST_TARGET_BUFFS)
+		return list
+	elseif groupKey == "playerDebuffs" then
+		Add(TEST_PLAYER_DEBUFFS)
 		return list
 	end
 	local isLong = groupKey == "playerLongBuffs"
@@ -684,17 +785,17 @@ local function StyleParts(group, mode, parts)
 		SetTextStyle(parts.name, list.nameFont, list.nameSize, list.nameColor)
 		SetTimeStyle(parts, list.timeFont, list.timeSize, list.timeColor)
 		if list.iconSide == "LEFT" then
-			parts.name:SetPoint("TOPLEFT", button, "TOPRIGHT", LIST_TEXT_GAP, 0)
-			parts.time:SetPoint("BOTTOMLEFT", button, "BOTTOMRIGHT", LIST_TEXT_GAP, 0)
+			parts.name:SetPoint("TOPLEFT", button, "TOPRIGHT", LIST_TEXT_GAP + list.nameX, list.nameY)
+			parts.time:SetPoint("BOTTOMLEFT", button, "BOTTOMRIGHT", LIST_TEXT_GAP + list.timeX, list.timeY)
 		else
-			parts.name:SetPoint("TOPRIGHT", button, "TOPLEFT", -LIST_TEXT_GAP, 0)
-			parts.time:SetPoint("BOTTOMRIGHT", button, "BOTTOMLEFT", -LIST_TEXT_GAP, 0)
+			parts.name:SetPoint("TOPRIGHT", button, "TOPLEFT", -LIST_TEXT_GAP + list.nameX, list.nameY)
+			parts.time:SetPoint("BOTTOMRIGHT", button, "BOTTOMLEFT", -LIST_TEXT_GAP + list.timeX, list.timeY)
 		end
 		parts.name:SetJustifyH(justify)
 		parts.time:SetJustifyH(justify)
 	else
 		SetTimeStyle(parts, settings.font, settings.textSize, settings.textColor)
-		parts.time:SetPoint("TOP", button, "BOTTOM", 0, -TIME_GAP)
+		parts.time:SetPoint("TOP", button, "BOTTOM", settings.textX, settings.textY - TIME_GAP)
 		parts.time:SetJustifyH("CENTER")
 	end
 	-- Test icons show the name only in list mode. Blizzard's buttons only fill it in list mode.
@@ -787,8 +888,8 @@ local function GetLayout(group, mode)
 		local list = settings.list
 		local left = list.iconSide == "LEFT"
 		layout.vertical = true
-		layout.anchor = left and "TOPLEFT" or "TOPRIGHT"
-		layout.signX, layout.signY = left and 1 or -1, -1
+		layout.anchor = (list.growUp and "BOTTOM" or "TOP") .. (left and "LEFT" or "RIGHT")
+		layout.signX, layout.signY = left and 1 or -1, list.growUp and 1 or -1
 		layout.isList = true
 		layout.width = list.iconSize + LIST_TEXT_GAP + LIST_TEXT_WIDTH
 		layout.height = list.iconSize
@@ -1003,7 +1104,7 @@ end
 
 local function ShowTestIcons(group, mode, layout)
 	local list = ReadTestBuffs(group.key)
-	SortBuffs(list, mode == "list")
+	SortBuffs(list, IsLongestFirst(group, mode))
 	if group.key == "playerLongBuffs" then
 		local enchants = {}
 		AddTestBuffs(enchants, TEST_ENCHANTS)
@@ -1071,8 +1172,15 @@ local function UpdateGroup(group)
 		local container = group.containers[mode]
 		if container then
 			ConfigureContainer(container, layout, group)
+			-- A list that changes direction is sorted the other way round.
+			local sortMethod, sortDirection = GetSortOptions(group, mode)
+			local resort = group.sortDirections[mode] ~= sortDirection
+			group.sortDirections[mode] = sortDirection
 			for _, auraGroup in ipairs(GetAuraGroups(group)) do
 				container:SetAuraGroupCandidateFilters(auraGroup.name, auraGroup.filters)
+				if resort then
+					container:SetAuraGroupSortMethod(auraGroup.name, sortMethod, sortDirection)
+				end
 			end
 			container:ClearAllPoints()
 			container:SetPoint(layout.anchor, group.holder, layout.anchor)
@@ -1114,7 +1222,7 @@ local function FinishMoving(group)
 	local scale = holder:GetEffectiveScale()
 	position.x = (frameX - targetX) / scale
 	position.y = (frameY - targetY) / scale
-	CleanGroup(settings, GROUP_DEFAULTS[group.key])
+	CleanGroup(settings, group.key)
 	PlaceHolder(group)
 	if ns.OnAuraSettingsMoved then
 		ns.OnAuraSettingsMoved(group.key)
@@ -1160,13 +1268,22 @@ function ns.UpdateAuraMovers()
 	end
 end
 
--- Blizzard's buff frame goes while either buff group is on. Its debuffs are a separate frame and stay.
-local function UpdateBlizzardBuffFrame()
-	if not BuffFrame or (InCombatLockdown() and BuffFrame:IsProtected()) then
+-- Blizzard's buff frame goes while either buff group is on, and its debuff frame, a separate one,
+-- while the player debuffs are. Each goes back to where it was when they're off.
+local blizzardParents = {}
+local function ReplaceBlizzardFrame(frame, replaced)
+	if not frame or (InCombatLockdown() and frame:IsProtected()) then
 		return
 	end
-	local replaced = IsGroupEnabled("playerLongBuffs") or IsGroupEnabled("playerShortBuffs")
-	BuffFrame:SetParent(replaced and ns.hiddenParent or UIParent)
+	if blizzardParents[frame] == nil then
+		blizzardParents[frame] = frame:GetParent() or UIParent
+	end
+	frame:SetParent(replaced and ns.hiddenParent or blizzardParents[frame])
+end
+
+local function UpdateBlizzardBuffFrame()
+	ReplaceBlizzardFrame(BuffFrame, IsGroupEnabled("playerLongBuffs") or IsGroupEnabled("playerShortBuffs"))
+	ReplaceBlizzardFrame(DebuffFrame, IsGroupEnabled("playerDebuffs"))
 end
 
 -- Puts every group where the current profile says, with what it should show.
@@ -1191,7 +1308,7 @@ end
 function ns.SetAuraOption(groupKey, field, value)
 	local settings = ns.db.auras[groupKey]
 	settings[field] = value
-	CleanGroup(settings, GROUP_DEFAULTS[groupKey])
+	CleanGroup(settings, groupKey)
 	ns.RefreshAuraFrames()
 	return settings[field]
 end
@@ -1200,7 +1317,7 @@ end
 function ns.SetAuraListOption(groupKey, field, value)
 	local settings = ns.db.auras[groupKey]
 	settings.list[field] = value
-	CleanGroup(settings, GROUP_DEFAULTS[groupKey])
+	CleanGroup(settings, groupKey)
 	ns.RefreshAuraFrames()
 	return settings.list[field]
 end
@@ -1268,11 +1385,6 @@ local function InitContainerButton(group, mode, button, sizeField)
 	end
 end
 
-local SORT_EXPIRATION_ONLY = 5
-local SORT_NORMAL, SORT_REVERSE = 0, 1
-
--- Standard mode shows the soonest to expire first and list mode the longest first, with buffs that
--- never expire counted as the longest either way.
 local function CreateContainer(group, mode)
 	local ok, container = pcall(CreateFrame, "AuraContainer", nil, group.holder, "CustomAuraContainerTemplate")
 	if not ok then
@@ -1282,12 +1394,12 @@ local function CreateContainer(group, mode)
 	group.records[mode] = {}
 	container:Hide()
 	container:SetUnit(group.spec.unit)
-	local sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.ExpirationOnly or SORT_EXPIRATION_ONLY
-	local directions = AuraContainerSortDirection or { Normal = SORT_NORMAL, Reverse = SORT_REVERSE }
+	local sortMethod, sortDirection = GetSortOptions(group, mode)
+	group.sortDirections[mode] = sortDirection
 	for _, auraGroup in ipairs(GetAuraGroups(group)) do
 		container:AddAuraGroup(auraGroup.name, group.spec.filter, {
 			sortMethod = sortMethod,
-			sortDirection = mode == "list" and directions.Reverse or directions.Normal,
+			sortDirection = sortDirection,
 			candidateFilters = auraGroup.filters,
 			initializeFrame = function(button)
 				InitContainerButton(group, mode, button, auraGroup.sizeField)
@@ -1321,6 +1433,8 @@ local function CreateContainers()
 	CreateContainer(groups.playerShortBuffs, "standard")
 	CreateContainer(groups.targetBuffs, "standard")
 	CreateContainer(groups.targetDebuffs, "standard")
+	CreateContainer(groups.playerDebuffs, "standard")
+	CreateContainer(groups.playerDebuffs, "list")
 end
 
 local function SetUpMasque()
@@ -1357,6 +1471,7 @@ local function CreateGroup(key, label, parent)
 		spec = GROUP_SPECS[key],
 		containers = {},
 		records = {},
+		sortDirections = {},
 		testIcons = {},
 		nextTestExpiry = math.huge,
 	}
@@ -1381,7 +1496,31 @@ function ns.CreateAuraFrames()
 		group.holder:SetDontSavePosition(true)
 		group.mover = CreateMover(group)
 	end
+	-- What "DibsUI player bar" attaches to: the player bar itself, or the same span lifted clear of the
+	-- pet bar and its name while there's a pet. The pet bar is as tall as the player bar and level with
+	-- it, beyond its outer end, so the lift is its height plus the room for the name.
+	local playerBody = DibsUIPlayerHealth.body
+	local petBody = DibsUIPetHealth and DibsUIPetHealth.body
+	local playerAnchor = CreateFrame("Frame", nil, ns.root)
+	ns.playerAuraAnchor = playerAnchor
+	local function PlacePlayerAnchor()
+		local lift = 0
+		if petBody and petBody:IsShown() then
+			lift = ns.Layout.health.height + GetTextClearance({ "petName" })
+		end
+		playerAnchor:ClearAllPoints()
+		playerAnchor:SetPoint("TOPLEFT", playerBody, "TOPLEFT", 0, lift)
+		playerAnchor:SetPoint("BOTTOMRIGHT", playerBody, "BOTTOMRIGHT", 0, lift)
+	end
+	PlacePlayerAnchor()
+	if petBody then
+		petBody:HookScript("OnShow", PlacePlayerAnchor)
+		petBody:HookScript("OnHide", PlacePlayerAnchor)
+	end
+
 	CreatePlacedGroup("playerLongBuffs", "Player long buffs")
+	-- The player's debuffs sit beside the player bar by default.
+	CreatePlacedGroup("playerDebuffs", "Player debuffs")
 	-- The target's buffs stay put without a target, empty, so the frame can still be moved.
 	CreatePlacedGroup("targetBuffs", "Target buffs")
 
@@ -1395,8 +1534,10 @@ function ns.CreateAuraFrames()
 	local targetDebuffs = CreateGroup("targetDebuffs", "Target debuffs", DibsUITargetHealth.body:GetParent())
 	targetDebuffs.holder:SetIgnoreParentAlpha(true)
 
-	-- Anchored groups follow their bar's width and the texts above it.
+	-- Anchored groups follow their bar's width and the texts above it, and the player bar's anchor
+	-- follows the pet's name.
 	local function RefreshAnchoredGroups()
+		PlacePlayerAnchor()
 		for _, group in pairs(groups) do
 			if group.spec.bar and group.settings then
 				UpdateGroup(group)

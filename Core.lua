@@ -215,6 +215,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateMinimapButton()
 		end
 	elseif event == "PLAYER_LOGIN" then
+		-- Said at login rather than on load, once the chat frame is ready to show it.
+		print("|cffffd100DibsUI|r is loaded! Use /dibsui or /dui to configure.")
 		HideCastBar()
 		-- These are protected frames, so a /reload during combat has to wait for combat to end.
 		if InCombatLockdown() then

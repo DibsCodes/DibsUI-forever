@@ -1,11 +1,21 @@
 local _, ns = ...
 
-local WIDTH, HEIGHT = 730, 540
-local COLUMN_WIDTH = 280
-local COLUMN_GAP = 32
+-- The window's starting size, and the smallest it can be dragged to. It remembers its size.
+local WIDTH, HEIGHT = 760, 580
+local MIN_WIDTH, MIN_HEIGHT = 540, 360
+
+-- Each tab's sections flow into as many columns as fit, up to three, each at least this wide.
+local COLUMN_WIDTH = 280 -- a row's width until its page lays it out
+local COLUMN_MIN_WIDTH = 220
+local COLUMN_GAP = 24
+local MAX_COLUMNS = 3
+local SECTION_GAP = 14 -- between sections in a column
+local SECTION_HEIGHT = 26
+local PAGE_PADDING = 16
 
 local INPUT_WIDTH = 44
 local DROPDOWN_WIDTH = 190
+local DROPDOWN_MIN_WIDTH = 100
 
 -- The switch art's size, from generate_art.py. The knob's centre moves KNOB_TRAVEL either side of the middle.
 local TOGGLE_WIDTH, TOGGLE_HEIGHT = 36, 20
@@ -36,7 +46,7 @@ end
 -- A gold heading with a divider under it, the way the game's settings group their options.
 local function CreateSection(parent, text)
 	local section = CreateFrame("Frame", nil, parent)
-	section:SetSize(COLUMN_WIDTH, 26)
+	section:SetSize(COLUMN_WIDTH, SECTION_HEIGHT)
 
 	local label = CreateLabel(section, "GameFontNormal", text)
 	label:SetPoint("TOPLEFT", 0, -2)
@@ -212,7 +222,8 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 	return row
 end
 
--- A label on the left and Blizzard's dropdown on the right.
+-- A label on the left and Blizzard's dropdown on the right. In a narrow section the dropdown gives up
+-- width so it doesn't run into its label.
 local function CreateDropdownRow(parent, text, rowWidth, dropdownWidth)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetSize(rowWidth or COLUMN_WIDTH, 34)
@@ -224,6 +235,11 @@ local function CreateDropdownRow(parent, text, rowWidth, dropdownWidth)
 	dropdown:SetWidth(dropdownWidth or DROPDOWN_WIDTH)
 	dropdown:SetPoint("RIGHT")
 	row.dropdown = dropdown
+
+	function row:FitWidth(width)
+		local room = width - label:GetStringWidth() - 16
+		dropdown:SetWidth(math.max(math.min(dropdownWidth or DROPDOWN_WIDTH, room), DROPDOWN_MIN_WIDTH))
+	end
 	return row
 end
 
@@ -263,69 +279,176 @@ local function SameFont(a, b)
 	return a:upper() == b:upper()
 end
 
--- Layout options: these move secure frames, so they're locked in combat.
-local function BuildLookAndFeel(page, left, right)
-	local section = CreateSection(page, "Frames")
-	section:SetPoint("TOPLEFT", left, 0)
+-- Layout ------------------------------------------------------------------------------------------
 
-	local showToT = CreateToggleRow(page, "Show target of target", ns.SetTargetOfTargetShown)
-	showToT:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -2)
+-- A section of a page: a heading and the rows under it, stacked. Hidden rows are left out and the rest
+-- close up, so a section can change with what's picked. Rows take the section's width unless they
+-- keep their own, like buttons.
+local function CreateCard(parent, title)
+	local card = CreateFrame("Frame", nil, parent)
+	card:SetSize(COLUMN_WIDTH, SECTION_HEIGHT)
+	local heading = CreateSection(card, title)
+	heading:SetPoint("TOPLEFT")
+	heading:SetPoint("TOPRIGHT")
+	card.entries = {}
 
-	local surnames = CreateToggleRow(page, "Show last names", ns.SetSurnamesShown)
-	surnames:SetPoint("TOPLEFT", showToT, "BOTTOMLEFT")
+	-- gap is the space above the row.
+	function card:Add(region, gap, keepWidth)
+		self.entries[#self.entries + 1] = { region = region, gap = gap or 0, keepWidth = keepWidth }
+		return region
+	end
+	return card
+end
 
-	local scale = CreateSliderRow(page, "Scale", ns.ScaleRange, FormatScale,
-		function() return ns.db.scale end, ns.SetScale)
-	scale:SetPoint("TOPLEFT", surnames, "BOTTOMLEFT", 0, -2)
+local function GetRegionHeight(region)
+	if region.GetStringHeight then
+		return region:GetStringHeight() or 0
+	end
+	return region:GetHeight() or 0
+end
 
-	local width = CreateSliderRow(page, "Width", ns.WidthRange, FormatScale,
-		function() return ns.db.width end, ns.SetWidth)
-	width:SetPoint("TOPLEFT", scale, "BOTTOMLEFT")
+-- Stacks a section's shown rows at this width. Returns its height.
+local function LayoutCard(card, width)
+	card:SetWidth(width)
+	local y = SECTION_HEIGHT + 2
+	for _, entry in ipairs(card.entries) do
+		local region = entry.region
+		if region:IsShown() then
+			y = y + entry.gap
+			region:ClearAllPoints()
+			region:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -y)
+			if not entry.keepWidth then
+				region:SetWidth(width)
+				if region.FitWidth then
+					region:FitWidth(width)
+				end
+			end
+			y = y + GetRegionHeight(region)
+		end
+	end
+	card:SetHeight(y)
+	return y
+end
 
-	local petWidth = CreateSliderRow(page, "Pet and target of target width", ns.WidthRange, FormatScale,
-		function() return ns.db.petWidth end, ns.SetPetWidth)
-	petWidth:SetPoint("TOPLEFT", width, "BOTTOMLEFT")
+local function PlaceCard(card, parent, x, y, width)
+	local height = LayoutCard(card, width)
+	card:ClearAllPoints()
+	card:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
+	return height
+end
 
-	local positionSection = CreateSection(page, "Position")
-	positionSection:SetPoint("TOPLEFT", right, 0)
+-- Lays shown sections out in as many columns as fit the width, each going under the shortest column
+-- so far, so the first ones fill the top row in order. Returns how far down the tallest column ends.
+local function LayoutCards(cards, parent, x, y, width)
+	local columns = math.floor((width + COLUMN_GAP) / (COLUMN_MIN_WIDTH + COLUMN_GAP))
+	columns = math.max(1, math.min(MAX_COLUMNS, columns))
+	local columnWidth = (width - (columns - 1) * COLUMN_GAP) / columns
+	local depths = {}
+	for i = 1, columns do
+		depths[i] = 0
+	end
+	for _, card in ipairs(cards) do
+		if card:IsShown() then
+			local shortest = 1
+			for i = 2, columns do
+				if depths[i] < depths[shortest] then
+					shortest = i
+				end
+			end
+			local height = PlaceCard(card, parent, x + (shortest - 1) * (columnWidth + COLUMN_GAP), y + depths[shortest], columnWidth)
+			depths[shortest] = depths[shortest] + height + SECTION_GAP
+		end
+	end
+	local deepest = 0
+	for i = 1, columns do
+		deepest = math.max(deepest, depths[i] - SECTION_GAP)
+	end
+	return y + deepest
+end
 
-	-- Center at the left, level with Up, which sits above Down, with Left and Right either side of
-	-- Down at the right of the column.
-	local center = CreateButton(page, "Center horizontally", 150)
-	center:SetPoint("TOPLEFT", positionSection, "BOTTOMLEFT", 0, -6)
+-- A tab's page: its content scrolls with the mouse wheel or the scroll bar at the right, and is laid
+-- out again whenever the window changes size or a tab shows or hides some of its rows.
+local function CreateScrollPage(parent)
+	local page = CreateFrame("Frame", nil, parent)
+	page:SetAllPoints()
+	page:Hide()
+
+	local scrollBar = CreateFrame("EventFrame", nil, page, "MinimalScrollBar")
+	scrollBar:SetPoint("TOPRIGHT", -8, -8)
+	scrollBar:SetPoint("BOTTOMRIGHT", -8, 8)
+
+	local scroll = CreateFrame("ScrollFrame", nil, page)
+	scroll:SetClipsChildren(true)
+	scroll:SetPoint("TOPLEFT", 0, -2)
+	scroll:SetPoint("BOTTOMRIGHT", scrollBar, "BOTTOMLEFT", -4, -6)
+
+	local content = CreateFrame("Frame", nil, scroll)
+	content:SetSize(1, 1)
+	scroll:SetScrollChild(content)
+	ScrollUtil.InitScrollFrameWithScrollBar(scroll, scrollBar)
+	page.content = content
+
+	function page:Relayout()
+		local width = scroll:GetWidth()
+		if not self.options or not width or width <= 2 * PAGE_PADDING then
+			return
+		end
+		local height = self.options.Layout(width - 2 * PAGE_PADDING)
+		content:SetSize(width, height + PAGE_PADDING)
+	end
+
+	scroll:SetScript("OnSizeChanged", function() page:Relayout() end)
+	page:SetScript("OnShow", function() page:Relayout() end)
+	return page
+end
+
+
+-- Frames, size, position and opacity. Size and position move secure frames, so they're locked in combat.
+local function BuildGeneral(content)
+	local framesCard = CreateCard(content, "Frames")
+	local showToT = framesCard:Add(CreateToggleRow(framesCard, "Show target of target", ns.SetTargetOfTargetShown))
+	local surnames = framesCard:Add(CreateToggleRow(framesCard, "Show last names", ns.SetSurnamesShown))
+
+	local sizeCard = CreateCard(content, "Scale and width")
+	local scale = sizeCard:Add(CreateSliderRow(sizeCard, "Scale", ns.ScaleRange, FormatScale,
+		function() return ns.db.scale end, ns.SetScale))
+	local width = sizeCard:Add(CreateSliderRow(sizeCard, "Width", ns.WidthRange, FormatScale,
+		function() return ns.db.width end, ns.SetWidth))
+	local petWidth = sizeCard:Add(CreateSliderRow(sizeCard, "Pet and target of target width", ns.WidthRange, FormatScale,
+		function() return ns.db.petWidth end, ns.SetPetWidth))
+
+	local positionCard = CreateCard(content, "Position")
+	local center = positionCard:Add(CreateButton(positionCard, "Center horizontally", 150), 6, true)
 	center:SetScript("OnClick", ns.CenterHorizontally)
 
-	local down = CreateButton(page, "Down", 52)
-	down:SetPoint("TOPRIGHT", positionSection, "BOTTOMRIGHT", -54, -30)
-	down:SetScript("OnClick", function() ns.Nudge(0, -1) end)
+	-- Up above Down, with Left and Right either side of Down.
+	local pad = positionCard:Add(CreateFrame("Frame", nil, positionCard), 8, true)
+	pad:SetSize(160, 50)
 
-	local up = CreateButton(page, "Up", 52)
-	up:SetPoint("BOTTOM", down, "TOP", 0, 2)
+	local up = CreateButton(pad, "Up", 52)
+	up:SetPoint("TOP")
 	up:SetScript("OnClick", function() ns.Nudge(0, 1) end)
 
-	local leftButton = CreateButton(page, "Left", 52)
+	local down = CreateButton(pad, "Down", 52)
+	down:SetPoint("TOP", up, "BOTTOM", 0, -2)
+	down:SetScript("OnClick", function() ns.Nudge(0, -1) end)
+
+	local leftButton = CreateButton(pad, "Left", 52)
 	leftButton:SetPoint("RIGHT", down, "LEFT", -2, 0)
 	leftButton:SetScript("OnClick", function() ns.Nudge(-1, 0) end)
 
-	local rightButton = CreateButton(page, "Right", 52)
+	local rightButton = CreateButton(pad, "Right", 52)
 	rightButton:SetPoint("LEFT", down, "RIGHT", 2, 0)
 	rightButton:SetScript("OnClick", function() ns.Nudge(1, 0) end)
 
-	-- Opacity, under Position. None of it is protected, so it stays usable in combat.
-	local opacitySection = CreateSection(page, "Opacity")
-	opacitySection:SetPoint("TOPLEFT", positionSection, "BOTTOMLEFT", 0, -64)
-
-	local modeRow = CreateDropdownRow(page, "Mode")
-	modeRow:SetPoint("TOPLEFT", opacitySection, "BOTTOMLEFT", 0, -2)
-
-	local modeHint = CreateLabel(page, "GameFontDisableSmall", "")
-	modeHint:SetPoint("TOPLEFT", modeRow, "BOTTOMLEFT", 0, 0)
-	modeHint:SetWidth(COLUMN_WIDTH)
-
-	local manual = CreateSliderRow(page, "Manual opacity", { min = 0, max = 100, step = 5 }, FormatPercent,
+	-- None of the opacity settings are protected, so they stay usable in combat.
+	local opacityCard = CreateCard(content, "Opacity")
+	local modeRow = opacityCard:Add(CreateDropdownRow(opacityCard, "Mode"))
+	local modeHint = opacityCard:Add(CreateLabel(opacityCard, "GameFontDisableSmall", ""))
+	modeHint:SetWordWrap(true)
+	local manual = opacityCard:Add(CreateSliderRow(opacityCard, "Manual opacity", { min = 0, max = 100, step = 5 }, FormatPercent,
 		function() return math.floor(ns.db.manualOpacity * 100 + 0.5) end,
-		function(value) ns.SetManualOpacity(value / 100) end)
-	manual:SetPoint("TOPLEFT", modeHint, "BOTTOMLEFT", 0, -4)
+		function(value) ns.SetManualOpacity(value / 100) end), 4)
 
 	local function SyncOpacity()
 		modeRow.dropdown:GenerateMenu()
@@ -362,74 +485,78 @@ local function BuildLookAndFeel(page, left, right)
 		end
 	end
 
+	function options.Layout(pageWidth)
+		return LayoutCards({ framesCard, sizeCard, positionCard, opacityCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
+	end
+
 	return options
 end
 
+-- The text picker is no wider than this, so its dropdown sits near its label.
+local PICKER_WIDTH = 440
+
 -- One text spot at a time, picked from a dropdown: whether it shows, what it shows, and how it looks.
 -- None of it is protected, so it all works in combat.
-local function BuildTextOptions(page, left, right)
+local function BuildTextOptions(content)
 	local selected = ns.TextGroups[1].fields[1]
 	local refresh
 
-	local section = CreateSection(page, "Text")
-	section:SetPoint("TOPLEFT", left, 0)
+	local pickCard = CreateCard(content, "Text")
+	local fieldRow = pickCard:Add(CreateDropdownRow(pickCard, "Text to edit", nil, 260))
+	local reset = pickCard:Add(CreateButton(pickCard, "Reset this text", 134), 6, true)
+	reset:SetScript("OnClick", function()
+		ns.ResetTextStyle(selected.key)
+		refresh()
+	end)
 
-	local fieldRow = CreateDropdownRow(page, "Text to edit")
-	fieldRow:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -2)
-
-	local showRow = CreateToggleRow(page, "Show", function(checked)
+	local displayCard = CreateCard(content, "Display")
+	local showRow = displayCard:Add(CreateToggleRow(displayCard, "Show", function(checked)
 		ns.SetTextStyle(selected.key, "enabled", checked)
-	end)
-	showRow:SetPoint("TOPLEFT", fieldRow, "BOTTOMLEFT")
-
-	local mouseoverRow = CreateToggleRow(page, "Only on mouseover", function(checked)
+	end))
+	local mouseoverRow = displayCard:Add(CreateToggleRow(displayCard, "Only on mouseover", function(checked)
 		ns.SetTextStyle(selected.key, "mouseover", checked)
-	end)
-	mouseoverRow:SetPoint("TOPLEFT", showRow, "BOTTOMLEFT")
+	end))
+	local formatRow = displayCard:Add(CreateDropdownRow(displayCard, "Shows"))
 
-	local formatRow = CreateDropdownRow(page, "Shows")
-	formatRow:SetPoint("TOPLEFT", mouseoverRow, "BOTTOMLEFT")
-
-	local fontRow = CreateDropdownRow(page, "Font")
-	fontRow:SetPoint("TOPLEFT", formatRow, "BOTTOMLEFT")
-
-	local size = CreateSliderRow(page, "Size", ns.TextSizeRange, FormatSize,
+	local fontCard = CreateCard(content, "Font and size")
+	local fontRow = fontCard:Add(CreateDropdownRow(fontCard, "Font"))
+	local size = fontCard:Add(CreateSliderRow(fontCard, "Size", ns.TextSizeRange, FormatSize,
 		function() return ns.GetTextOption(selected.key, "size") end,
 		function(value)
 			value = math.min(math.max(math.floor(value + 0.5), ns.TextSizeRange.min), ns.TextSizeRange.max)
 			ns.SetTextStyle(selected.key, "size", value)
-		end)
-	local sizeSection = CreateSection(page, "Size and position")
-	sizeSection:SetPoint("TOPLEFT", right, 0)
-	size:SetPoint("TOPLEFT", sizeSection, "BOTTOMLEFT", 0, -2)
+		end))
+	local fontToAll = fontCard:Add(CreateButton(fontCard, "Use font for all text", 150), 6, true)
+	fontToAll:SetScript("OnClick", function()
+		local font = ns.GetTextOption(selected.key, "font")
+		for key in pairs(ns.TextFields) do
+			ns.SetTextStyle(key, "font", font)
+		end
+		refresh()
+	end)
 
 	-- Moves the spot from where it normally sits, in UI units. Positive Y is up.
+	local positionCard = CreateCard(content, "Position")
 	local function CreateOffsetRow(text, part)
-		return CreateSliderRow(page, text, ns.TextOffsetRange, FormatSize,
+		return positionCard:Add(CreateSliderRow(positionCard, text, ns.TextOffsetRange, FormatSize,
 			function() return ns.GetTextOption(selected.key, part) end,
 			function(value)
 				value = math.min(math.max(math.floor(value + 0.5), ns.TextOffsetRange.min), ns.TextOffsetRange.max)
 				ns.SetTextStyle(selected.key, part, value)
-			end)
+			end))
 	end
-
 	local offsetX = CreateOffsetRow("X offset", "offsetX")
-	offsetX:SetPoint("TOPLEFT", size, "BOTTOMLEFT")
-
 	local offsetY = CreateOffsetRow("Y offset", "offsetY")
-	offsetY:SetPoint("TOPLEFT", offsetX, "BOTTOMLEFT")
 
-	local colorRow = CreateToggleRow(page, "Custom color", function(checked)
+	local colorCard = CreateCard(content, "Color")
+	local colorRow = colorCard:Add(CreateToggleRow(colorCard, "Custom color", function(checked)
 		if checked then
 			ns.SetTextStyle(selected.key, "color", { ns.GetTextDefaultColor(selected.key) })
 		else
 			ns.SetTextStyle(selected.key, "color", nil)
 		end
 		refresh()
-	end)
-	local colorSection = CreateSection(page, "Color")
-	colorSection:SetPoint("TOPLEFT", offsetY, "BOTTOMLEFT", 0, -6)
-	colorRow:SetPoint("TOPLEFT", colorSection, "BOTTOMLEFT", 0, -2)
+	end))
 
 	-- The template passes clicks on to its parent, which would flip the switch as well.
 	local swatch = CreateFrame("Button", nil, colorRow, "ColorSwatchTemplate")
@@ -440,26 +567,8 @@ local function BuildTextOptions(page, left, right)
 	swatch.Color:SetSize(16, 16)
 	swatch:SetPoint("RIGHT", colorRow.toggle, "LEFT", -12, 0)
 
-	local hint = CreateLabel(page, "GameFontDisableSmall", "")
-	hint:SetPoint("TOPLEFT", colorRow, "BOTTOMLEFT", 0, 0)
-	hint:SetWidth(COLUMN_WIDTH)
-
-	local reset = CreateButton(page, "Reset this text", 134)
-	reset:SetPoint("TOPLEFT", fontRow, "BOTTOMLEFT", 0, -16)
-	reset:SetScript("OnClick", function()
-		ns.ResetTextStyle(selected.key)
-		refresh()
-	end)
-
-	local fontToAll = CreateButton(page, "Use font for all text", 140)
-	fontToAll:SetPoint("LEFT", reset, "RIGHT", 6, 0)
-	fontToAll:SetScript("OnClick", function()
-		local font = ns.GetTextOption(selected.key, "font")
-		for key in pairs(ns.TextFields) do
-			ns.SetTextStyle(key, "font", font)
-		end
-		refresh()
-	end)
+	local hint = colorCard:Add(CreateLabel(colorCard, "GameFontDisableSmall", ""))
+	hint:SetWordWrap(true)
 
 	local function OpenColorPicker()
 		local key = selected.key
@@ -559,7 +668,13 @@ local function BuildTextOptions(page, left, right)
 	-- A saved font that can't be loaded any more shows as the default it falls back to.
 	fontRow.dropdown:SetDefaultText("Friz Quadrata")
 
-	return { Sync = refresh, SetCombatLocked = function() end }
+	-- The picker spans the top, and the rest flow under it.
+	local function Layout(pageWidth)
+		local top = PAGE_PADDING + PlaceCard(pickCard, content, PAGE_PADDING, PAGE_PADDING, math.min(pageWidth, PICKER_WIDTH))
+		return LayoutCards({ displayCard, fontCard, positionCard, colorCard }, content, PAGE_PADDING, top + SECTION_GAP, pageWidth)
+	end
+
+	return { Sync = refresh, SetCombatLocked = function() end, Layout = Layout }
 end
 
 -- Sits above the tabs, since it applies to the whole addon rather than one tab.
@@ -687,32 +802,30 @@ StaticPopupDialogs.DIBSUI_DELETE_PROFILE = {
 
 local PROFILE_ROW_HEIGHT = 28
 local PROFILE_LIST_HEIGHT = 224
+local PROFILE_SCROLL_BAR_ROOM = 18
 
 -- The profile in use, and every profile on the account in a list. Clicking one uses it on this
 -- character. Switching places the frames again, so all of this is locked in combat.
-local function BuildProfiles(page, left, right, context)
+local function BuildProfiles(content, context)
 	local isLocked = false
 
-	local section = CreateSection(page, "Profiles")
-	section:SetPoint("TOPLEFT", left, 0)
+	local profilesCard = CreateCard(content, "Profiles")
+	profilesCard:Add(CreateLabel(profilesCard, "GameFontHighlight", "Current profile"), 4)
+	local current = profilesCard:Add(CreateLabel(profilesCard, "GameFontNormalLarge", ""), 6)
 
-	local currentLabel = CreateLabel(page, "GameFontHighlight", "Current profile")
-	currentLabel:SetPoint("TOPLEFT", section, "BOTTOMLEFT", 0, -6)
+	-- The list keeps its own height and scroll bar, and stretches with the section.
+	local listHolder = profilesCard:Add(CreateFrame("Frame", nil, profilesCard), 12)
+	listHolder:SetHeight(PROFILE_LIST_HEIGHT)
 
-	local current = CreateLabel(page, "GameFontNormalLarge", "")
-	current:SetPoint("TOPLEFT", currentLabel, "BOTTOMLEFT", 0, -6)
-	current:SetWidth(COLUMN_WIDTH)
-
-	local listBack = page:CreateTexture(nil, "BACKGROUND")
+	local listBack = listHolder:CreateTexture(nil, "BACKGROUND")
 	listBack:SetColorTexture(0, 0, 0, 0.3)
+	listBack:SetAllPoints()
 
-	local list = CreateFrame("Frame", nil, page, "WowScrollBoxList")
-	list:SetPoint("TOPLEFT", current, "BOTTOMLEFT", 0, -14)
-	list:SetSize(COLUMN_WIDTH - 14, PROFILE_LIST_HEIGHT)
-	listBack:SetPoint("TOPLEFT", list, -2, 2)
-	listBack:SetPoint("BOTTOMRIGHT", list, 16, -2)
+	local list = CreateFrame("Frame", nil, listHolder, "WowScrollBoxList")
+	list:SetPoint("TOPLEFT", 2, -2)
+	list:SetPoint("BOTTOMRIGHT", -PROFILE_SCROLL_BAR_ROOM, 2)
 
-	local scrollBar = CreateFrame("EventFrame", nil, page, "MinimalScrollBar")
+	local scrollBar = CreateFrame("EventFrame", nil, listHolder, "MinimalScrollBar")
 	scrollBar:SetPoint("TOPLEFT", list, "TOPRIGHT", 4, 0)
 	scrollBar:SetPoint("BOTTOMLEFT", list, "BOTTOMRIGHT", 4, 0)
 
@@ -772,21 +885,16 @@ local function BuildProfiles(page, left, right, context)
 	ScrollUtil.InitScrollBoxListWithScrollBar(list, scrollBar, view)
 	ScrollUtil.AddManagedScrollBarVisibilityBehavior(list, scrollBar)
 
-	local manageSection = CreateSection(page, "Manage")
-	manageSection:SetPoint("TOPLEFT", right, 0)
-
+	local manageCard = CreateCard(content, "Manage")
 	local dialog = CreateNewProfileDialog(context.window, OnProfileChanged)
 
-	local newProfile = CreateButton(page, "New profile", 150)
-	newProfile:SetPoint("TOPLEFT", manageSection, "BOTTOMLEFT", 0, -8)
+	local newProfile = manageCard:Add(CreateButton(manageCard, "New profile", 150), 8, true)
 	newProfile:SetScript("OnClick", function() dialog:Show() end)
 
-	local help = CreateLabel(page, "GameFontHighlightSmall",
+	local help = manageCard:Add(CreateLabel(manageCard, "GameFontHighlightSmall",
 		"Profiles are shared by every character on your account, and each character remembers which one it uses.\n\n"
 		.. "Click a profile to use it on this character.\n\n"
-		.. "The minimap button's settings are the same in every profile.")
-	help:SetPoint("TOPLEFT", newProfile, "BOTTOMLEFT", 0, -14)
-	help:SetWidth(COLUMN_WIDTH)
+		.. "The minimap button's settings are the same in every profile."), 14)
 	help:SetWordWrap(true)
 
 	return {
@@ -799,18 +907,19 @@ local function BuildProfiles(page, left, right, context)
 				dialog:Hide()
 			end
 		end,
+		Layout = function(pageWidth)
+			return LayoutCards({ profilesCard, manageCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
+		end,
 	}
 end
 
 local SIDEBAR_WIDTH = 170
-local AURA_COLUMN_WIDTH = 230
-local AURA_COLUMN_GAP = 20
 local AURA_DROPDOWN_WIDTH = 130
 local AURA_GROUP_HEIGHT = 30
 
 -- The groups down the left, each with its own switch, and the picked group's settings beside them.
 -- None of it is protected, so it all works in combat.
-local function BuildAuras(page, left)
+local function BuildAuras(content, context, relayout)
 	local selected = ns.AuraGroups[1]
 	local refresh
 	local syncs = {}
@@ -831,15 +940,12 @@ local function BuildAuras(page, left)
 		ns.SetAuraListOption(selected.key, field, value)
 	end
 
-	local groupSection = CreateSection(page, "Groups")
-	groupSection:SetWidth(SIDEBAR_WIDTH)
-	groupSection:SetPoint("TOPLEFT", left, 0)
-
+	-- Sidebar: the groups, then test mode
+	local groupsCard = CreateCard(content, "Groups")
 	local groupRows = {}
 	for i, group in ipairs(ns.AuraGroups) do
-		local row = CreateFrame("Button", nil, page)
+		local row = groupsCard:Add(CreateFrame("Button", nil, groupsCard), i == 1 and 2 or 0)
 		row:SetSize(SIDEBAR_WIDTH, AURA_GROUP_HEIGHT)
-		row:SetPoint("TOPLEFT", groupSection, "BOTTOMLEFT", 0, -2 - (i - 1) * AURA_GROUP_HEIGHT)
 
 		local highlight = row:CreateTexture(nil, "HIGHLIGHT")
 		highlight:SetAllPoints()
@@ -870,55 +976,15 @@ local function BuildAuras(page, left)
 		groupRows[i] = { row = row, group = group }
 	end
 
-	local testSection = CreateSection(page, "Test mode")
-	testSection:SetWidth(SIDEBAR_WIDTH)
-	testSection:SetPoint("TOPLEFT", groupSection, "BOTTOMLEFT", 0, -14 - #ns.AuraGroups * AURA_GROUP_HEIGHT)
-
-	local testRow = CreateToggleRow(page, "Show test buffs", ns.SetAuraTestMode)
-	testRow:SetWidth(SIDEBAR_WIDTH)
-	testRow:SetPoint("TOPLEFT", testSection, "BOTTOMLEFT", 0, -2)
-
-	local testHint = CreateLabel(page, "GameFontDisableSmall",
-		"Fills every group with sample buffs, so you can see the layout as you change it. Target debuffs show while you have a target, and target buffs show either way. Turns off when you reload.")
-	testHint:SetPoint("TOPLEFT", testRow, "BOTTOMLEFT", 0, -2)
-	testHint:SetWidth(SIDEBAR_WIDTH)
+	local testCard = CreateCard(content, "Test mode")
+	local testRow = testCard:Add(CreateToggleRow(testCard, "Show test buffs", ns.SetAuraTestMode), 2)
+	local testHint = testCard:Add(CreateLabel(testCard, "GameFontDisableSmall",
+		"Fills every group with sample buffs, so you can see the layout as you change it. Target debuffs show while you have a target, and target buffs show either way. Turns off when you reload."), 2)
 	testHint:SetWordWrap(true)
-
 	if ns.hasMasque then
-		local masqueHint = CreateLabel(page, "GameFontDisableSmall",
-			"Masque is installed: pick a skin for these icons in Masque's settings (/masque).")
-		masqueHint:SetPoint("TOPLEFT", testHint, "BOTTOMLEFT", 0, -10)
-		masqueHint:SetWidth(SIDEBAR_WIDTH)
+		local masqueHint = testCard:Add(CreateLabel(testCard, "GameFontDisableSmall",
+			"Masque is installed: pick a skin for these icons in Masque's settings (/masque)."), 10)
 		masqueHint:SetWordWrap(true)
-	end
-
-	-- The picked group's settings, in two columns. Groups that aren't built yet show a note instead.
-	local pane = CreateFrame("Frame", nil, page)
-	pane:SetAllPoints()
-
-	local columnA = CreateFrame("Frame", nil, pane)
-	columnA:SetSize(1, 1)
-	columnA:SetPoint("TOPLEFT", left, "TOPLEFT", SIDEBAR_WIDTH + AURA_COLUMN_GAP, 0)
-	local columnB = CreateFrame("Frame", nil, pane)
-	columnB:SetSize(1, 1)
-	columnB:SetPoint("TOPLEFT", columnA, "TOPLEFT", AURA_COLUMN_WIDTH + AURA_COLUMN_GAP, 0)
-
-	local comingSoon = CreateLabel(page, "GameFontDisable", "")
-	comingSoon:SetPoint("TOPLEFT", columnA, "TOPLEFT", 0, -6)
-
-	-- Standard and list mode each have their own first column. The second column, with the mode and
-	-- position, is shared.
-	local standardPane = CreateFrame("Frame", nil, pane)
-	standardPane:SetAllPoints()
-	local listPane = CreateFrame("Frame", nil, pane)
-	listPane:SetAllPoints()
-
-	local function Section(parent, text, anchor, gap)
-		local section = CreateSection(parent, text)
-		section:SetWidth(AURA_COLUMN_WIDTH)
-		local isColumnTop = anchor == columnA or anchor == columnB
-		section:SetPoint("TOPLEFT", anchor, isColumnTop and "TOPLEFT" or "BOTTOMLEFT", 0, gap or 0)
-		return section
 	end
 
 	-- Each row's refresh, run only while the row is showing, so a row never reads a setting the picked
@@ -928,7 +994,7 @@ local function BuildAuras(page, left)
 	end
 
 	local function IsShowing(region)
-		while region and region ~= page do
+		while region and region ~= content do
 			if not region:IsShown() then
 				return false
 			end
@@ -939,27 +1005,30 @@ local function BuildAuras(page, left)
 
 	-- A slider reads its value as it's made, while the first group is picked, which may not have this
 	-- setting. Its row only shows for groups that do.
-	local function Slider(parent, text, range, access, anchor, gap)
+	local function Slider(card, text, range, access)
 		local function get()
 			local value = access.get()
 			return value ~= nil and value or range.min
 		end
-		local row = CreateSliderRow(parent, text, range, FormatSize, get, access.set)
-		row:SetWidth(AURA_COLUMN_WIDTH)
-		row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or 0)
+		local row = card:Add(CreateSliderRow(card, text, range, FormatSize, get, access.set))
 		AddSync(row, row.Sync)
 		return row
 	end
 
-	local function Dropdown(parent, text, anchor, gap)
-		local row = CreateDropdownRow(parent, text, AURA_COLUMN_WIDTH, AURA_DROPDOWN_WIDTH)
-		row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or 0)
+	local function Toggle(card, text, access)
+		local row = card:Add(CreateToggleRow(card, text, access.set))
+		AddSync(row, function() row.toggle:SetChecked(access.get()) end)
+		return row
+	end
+
+	local function Dropdown(card, text)
+		local row = card:Add(CreateDropdownRow(card, text, nil, AURA_DROPDOWN_WIDTH))
 		AddSync(row, function() row.dropdown:GenerateMenu() end)
 		return row
 	end
 
-	local function Choices(parent, text, list, access, anchor, gap)
-		local row = Dropdown(parent, text, anchor, gap)
+	local function Choices(card, text, list, access)
+		local row = Dropdown(card, text)
 		row.dropdown:SetupMenu(function(_, root)
 			for _, item in ipairs(list) do
 				root:CreateRadio(item.label,
@@ -974,8 +1043,8 @@ local function BuildAuras(page, left)
 	end
 
 	-- Each font shows in its own typeface. nil is the default font.
-	local function FontChoice(parent, access, anchor, gap)
-		local row = Dropdown(parent, "Font", anchor, gap)
+	local function FontChoice(card, access)
+		local row = Dropdown(card, "Font")
 		row.dropdown:SetupMenu(function(_, root)
 			root:SetScrollMode(360)
 			for _, font in ipairs(ns.GetFonts()) do
@@ -994,10 +1063,9 @@ local function BuildAuras(page, left)
 		return row
 	end
 
-	local function ColorChoice(parent, access, anchor)
-		local row = CreateFrame("Frame", nil, parent)
-		row:SetSize(AURA_COLUMN_WIDTH, 30)
-		row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT")
+	local function ColorChoice(card, access)
+		local row = card:Add(CreateFrame("Frame", nil, card))
+		row:SetSize(COLUMN_WIDTH, 30)
 		local label = CreateLabel(row, "GameFontHighlight", "Color")
 		label:SetPoint("LEFT")
 		local swatch = CreateFrame("Button", nil, row, "ColorSwatchTemplate")
@@ -1022,6 +1090,15 @@ local function BuildAuras(page, left)
 		end)
 		AddSync(row, function() swatch:SetColorRGB(unpack(access.get())) end)
 		return row
+	end
+
+	-- A text's font, size, color and offsets from where it normally sits.
+	local function TextChoices(card, access, fields)
+		FontChoice(card, access(fields.font))
+		Slider(card, "Size", ns.AuraTextSizeRange, access(fields.size))
+		ColorChoice(card, access(fields.color))
+		Slider(card, "X offset", ns.AuraTextOffsetRange, access(fields.x))
+		Slider(card, "Y offset", ns.AuraTextOffsetRange, access(fields.y))
 	end
 
 	-- Reads and writes one setting of the picked group, or of its list mode.
@@ -1051,74 +1128,61 @@ local function BuildAuras(page, left)
 		}
 	end
 
-	-- Standard mode: icons
-	local iconSection = Section(standardPane, "Icons", columnA)
-	local iconSize = Slider(standardPane, "Icon size", ns.AuraIconSizeRange, Field("iconSize"), iconSection, -2)
-	local spacing = Slider(standardPane, "Spacing", ns.AuraSpacingRange, Field("spacing"), iconSize)
-	-- Groups that set the player's own auras apart give them their own size.
-	local ownSize = Slider(standardPane, "Your debuffs icon size", ns.AuraIconSizeRange, Field("ownIconSize"), spacing)
-	local growthRow = Choices(standardPane, "Growth", ns.AuraGrowths, Field("growth"), spacing)
-	local frameSize = Slider(standardPane, "Frame width", ns.AuraFrameSizeRange, Field("frameSize"), growthRow)
-
-	-- Standard mode: time text
-	local textSection = Section(standardPane, "Time text", frameSize, -6)
-	local fontRow = FontChoice(standardPane, Field("font"), textSection, -2)
-	local textSize = Slider(standardPane, "Size", ns.AuraTextSizeRange, Field("textSize"), fontRow)
-	ColorChoice(standardPane, Field("textColor"), textSize)
-
-	-- List mode: icons
-	local listIconSection = Section(listPane, "Icons", columnA)
-	local rightSide = CreateToggleRow(listPane, "Icon on the right", function(checked)
-		SetList("iconSide", checked and "RIGHT" or "LEFT")
-	end)
-	rightSide:SetWidth(AURA_COLUMN_WIDTH)
-	rightSide:SetPoint("TOPLEFT", listIconSection, "BOTTOMLEFT", 0, -2)
-	AddSync(rightSide, function() rightSide.toggle:SetChecked(GetList("iconSide") == "RIGHT") end)
-	local listIconSize = Slider(listPane, "Icon size", ns.AuraIconSizeRange, ListField("iconSize"), rightSide)
-	local listSpacing = Slider(listPane, "Spacing", ns.AuraSpacingRange, ListField("spacing"), listIconSize)
-
-	-- List mode: name and time
-	local nameSection = Section(listPane, "Name", listSpacing, -6)
-	local nameFont = FontChoice(listPane, ListField("nameFont"), nameSection, -2)
-	local nameSize = Slider(listPane, "Size", ns.AuraTextSizeRange, ListField("nameSize"), nameFont)
-	local nameColor = ColorChoice(listPane, ListField("nameColor"), nameSize)
-
-	local timeSection = Section(listPane, "Time", nameColor, -6)
-	local timeFont = FontChoice(listPane, ListField("timeFont"), timeSection, -2)
-	local timeSize = Slider(listPane, "Size", ns.AuraTextSizeRange, ListField("timeSize"), timeFont)
-	ColorChoice(listPane, ListField("timeColor"), timeSize)
+	-- Groups that aren't built yet say so instead.
+	local soonCard = CreateCard(content, "Coming soon")
+	local soonNote = soonCard:Add(CreateLabel(soonCard, "GameFontDisable", ""), 6)
 
 	-- Mode, for the groups that have a list mode
-	local modeSection = Section(pane, "Layout", columnB)
-	local modeRow = Choices(pane, "Mode", ns.AuraModes, Field("mode"), modeSection, -2)
-	local modeHint = CreateLabel(pane, "GameFontDisableSmall", "")
-	modeHint:SetPoint("TOPLEFT", modeRow, "BOTTOMLEFT", 0, 0)
-	modeHint:SetWidth(AURA_COLUMN_WIDTH)
+	local modeCard = CreateCard(content, "Layout")
+	Choices(modeCard, "Mode", ns.AuraModes, Field("mode"))
+	local modeHint = modeCard:Add(CreateLabel(modeCard, "GameFontDisableSmall", ""))
 	modeHint:SetWordWrap(true)
 
-	-- Position, of the mode in use. Anchored groups have none, and say where they sit instead.
-	local positionPane = CreateFrame("Frame", nil, pane)
-	positionPane:SetAllPoints()
-	local positionSection = CreateSection(positionPane, "Position")
-	positionSection:SetWidth(AURA_COLUMN_WIDTH)
-	local pointRow = Choices(positionPane, "Frame point", ns.AuraPoints, PositionField("point"), positionSection, -2)
-	local targetRow = Choices(positionPane, "Attach to", ns.AuraAnchorTargets, PositionField("anchorTo"), pointRow)
-	local targetPointRow = Choices(positionPane, "Attach point", ns.AuraPoints, PositionField("anchorPoint"), targetRow)
-	local offsetX = Slider(positionPane, "X offset", ns.AuraOffsetRange, PositionField("x"), targetPointRow)
-	local offsetY = Slider(positionPane, "Y offset", ns.AuraOffsetRange, PositionField("y"), offsetX)
+	-- Standard mode
+	local iconCard = CreateCard(content, "Icons")
+	Slider(iconCard, "Icon size", ns.AuraIconSizeRange, Field("iconSize"))
+	Slider(iconCard, "Spacing", ns.AuraSpacingRange, Field("spacing"))
+	-- Groups that set the player's own auras apart give them their own size.
+	local ownSize = Slider(iconCard, "Your debuffs icon size", ns.AuraIconSizeRange, Field("ownIconSize"))
+	local growthRow = Choices(iconCard, "Growth", ns.AuraGrowths, Field("growth"))
+	local frameSize = Slider(iconCard, "Frame width", ns.AuraFrameSizeRange, Field("frameSize"))
 
-	local positionHint = CreateLabel(positionPane, "GameFontDisableSmall",
-		"Sizes and offsets follow your UI scale. You can also drag the frame while frames are unlocked.")
-	positionHint:SetPoint("TOPLEFT", offsetY, "BOTTOMLEFT", 0, -4)
-	positionHint:SetWidth(AURA_COLUMN_WIDTH)
+	local textCard = CreateCard(content, "Time text")
+	TextChoices(textCard, Field, { font = "font", size = "textSize", color = "textColor", x = "textX", y = "textY" })
+
+	-- List mode
+	local listIconCard = CreateCard(content, "Icons")
+	Toggle(listIconCard, "Icon on the right", {
+		get = function() return GetList("iconSide") == "RIGHT" end,
+		set = function(checked) SetList("iconSide", checked and "RIGHT" or "LEFT") end,
+	})
+	-- A list growing up starts at the bottom, so it can rise from beside a bar.
+	Toggle(listIconCard, "Grow up", ListField("growUp"))
+	Slider(listIconCard, "Icon size", ns.AuraIconSizeRange, ListField("iconSize"))
+	Slider(listIconCard, "Spacing", ns.AuraSpacingRange, ListField("spacing"))
+
+	local nameCard = CreateCard(content, "Name")
+	TextChoices(nameCard, ListField, { font = "nameFont", size = "nameSize", color = "nameColor", x = "nameX", y = "nameY" })
+
+	local timeCard = CreateCard(content, "Time")
+	TextChoices(timeCard, ListField, { font = "timeFont", size = "timeSize", color = "timeColor", x = "timeX", y = "timeY" })
+
+	-- Position, of the mode in use. Anchored groups have none, and say where they sit instead.
+	local positionCard = CreateCard(content, "Position")
+	Choices(positionCard, "Frame point", ns.AuraPoints, PositionField("point"))
+	Choices(positionCard, "Attach to", ns.AuraAnchorTargets, PositionField("anchorTo"))
+	Choices(positionCard, "Attach point", ns.AuraPoints, PositionField("anchorPoint"))
+	Slider(positionCard, "X offset", ns.AuraOffsetRange, PositionField("x"))
+	Slider(positionCard, "Y offset", ns.AuraOffsetRange, PositionField("y"))
+	local positionHint = positionCard:Add(CreateLabel(positionCard, "GameFontDisableSmall",
+		"Sizes and offsets follow your UI scale. You can also drag the frame while frames are unlocked."), 4)
 	positionHint:SetWordWrap(true)
 
-	local anchoredSection = Section(pane, "Position", columnB)
-	local anchoredNote = CreateLabel(pane, "GameFontHighlightSmall", "")
-	anchoredNote:SetPoint("TOPLEFT", anchoredSection, "BOTTOMLEFT", 0, -6)
-	anchoredNote:SetWidth(AURA_COLUMN_WIDTH)
+	local anchoredCard = CreateCard(content, "Position")
+	local anchoredNote = anchoredCard:Add(CreateLabel(anchoredCard, "GameFontHighlightSmall", ""), 4)
 	anchoredNote:SetWordWrap(true)
-	anchoredNote:SetJustifyH("LEFT")
+
+	local settingsCards = { soonCard, modeCard, iconCard, listIconCard, textCard, nameCard, timeCard, positionCard, anchoredCard }
 
 	function refresh()
 		for _, entry in ipairs(groupRows) do
@@ -1128,82 +1192,127 @@ local function BuildAuras(page, left)
 			end
 		end
 		testRow.toggle:SetChecked(ns.auraTestMode)
-		pane:SetShown(selected.built == true)
-		comingSoon:SetShown(not selected.built)
-		comingSoon:SetText(selected.label .. " are coming soon.")
-		if not selected.built then
-			return
-		end
 
-		local hasListMode = selected.hasListMode == true
+		local built = selected.built == true
+		local hasListMode = built and selected.hasListMode == true
 		local isAnchored = selected.anchored == true
-		local isList = IsList()
-		modeSection:SetShown(hasListMode)
-		modeRow:SetShown(hasListMode)
-		modeHint:SetShown(hasListMode)
+		local isList = built and IsList()
+		soonCard:SetShown(not built)
+		soonNote:SetText(selected.label .. " are coming soon.")
+		modeCard:SetShown(hasListMode)
 		if hasListMode then
 			modeHint:SetText(ns.AuraModesByKey[Get("mode")].description)
 		end
-		positionSection:ClearAllPoints()
-		if hasListMode then
-			positionSection:SetPoint("TOPLEFT", modeHint, "BOTTOMLEFT", 0, -10)
-		else
-			positionSection:SetPoint("TOPLEFT", columnB, "TOPLEFT")
-		end
-		positionPane:SetShown(not isAnchored)
-		anchoredSection:SetShown(isAnchored)
-		anchoredNote:SetShown(isAnchored)
+		iconCard:SetShown(built and not isList)
+		textCard:SetShown(built and not isList)
+		listIconCard:SetShown(isList)
+		nameCard:SetShown(isList)
+		timeCard:SetShown(isList)
+		positionCard:SetShown(built and not isAnchored)
+		anchoredCard:SetShown(built and isAnchored)
 		anchoredNote:SetText(selected.anchorNote or "")
-		standardPane:SetShown(not isList)
-		listPane:SetShown(isList)
 
 		-- Anchored groups take their growth and width from the frame they sit on.
-		local hasOwnSize = selected.hasOwnSize == true
 		growthRow:SetShown(not isAnchored)
 		frameSize:SetShown(not isAnchored)
-		ownSize:SetShown(hasOwnSize)
-		textSection:ClearAllPoints()
-		textSection:SetPoint("TOPLEFT", isAnchored and (hasOwnSize and ownSize or spacing) or frameSize, "BOTTOMLEFT", 0, -6)
-		if not isAnchored then
+		ownSize:SetShown(selected.hasOwnSize == true)
+		if built and not isAnchored then
 			-- Growth that fills up or down first wraps at the frame's height instead.
 			local growth = ns.AuraGrowthsByKey[Get("growth")]
 			local isVertical = growth.line == "UP" or growth.line == "DOWN"
 			frameSize.label:SetText(isVertical and "Frame height" or "Frame width")
 		end
-		for _, entry in ipairs(syncs) do
-			if IsShowing(entry.row) then
-				entry.sync()
+		if built then
+			for _, entry in ipairs(syncs) do
+				if IsShowing(entry.row) then
+					entry.sync()
+				end
 			end
 		end
+		relayout()
 	end
 
 	-- Dragging the frame while unlocked changes its offsets, which the sliders follow.
 	function ns.OnAuraSettingsMoved(groupKey)
-		if groupKey == selected.key and page:IsVisible() then
+		if groupKey == selected.key and content:IsVisible() then
 			refresh()
 		end
 	end
 
-	return { Sync = refresh, SetCombatLocked = function() end }
+	-- The sidebar keeps its width at the left, and the picked group's sections flow beside it.
+	local function Layout(pageWidth)
+		local sidebarBottom = PAGE_PADDING + PlaceCard(groupsCard, content, PAGE_PADDING, PAGE_PADDING, SIDEBAR_WIDTH)
+		sidebarBottom = sidebarBottom + SECTION_GAP + PlaceCard(testCard, content, PAGE_PADDING, sidebarBottom + SECTION_GAP, SIDEBAR_WIDTH)
+		local settingsX = PAGE_PADDING + SIDEBAR_WIDTH + COLUMN_GAP
+		local settingsBottom = LayoutCards(settingsCards, content, settingsX, PAGE_PADDING, pageWidth - SIDEBAR_WIDTH - COLUMN_GAP)
+		return math.max(sidebarBottom, settingsBottom)
+	end
+
+	return { Sync = refresh, SetCombatLocked = function() end, Layout = Layout }
 end
 
 local TABS = {
-	{ label = "Look and feel", build = BuildLookAndFeel },
-	{ label = "Text options", build = BuildTextOptions },
+	{ label = "General", build = BuildGeneral },
+	{ label = "Text", build = BuildTextOptions },
 	{ label = "Buffs/Debuffs", build = BuildAuras },
 	{ label = "Profiles", build = BuildProfiles },
 }
+
+-- The saved size, kept between the smallest the window can be and the screen.
+local function GetWindowSize()
+	local maxWidth = math.max(MIN_WIDTH, UIParent:GetWidth() or MIN_WIDTH)
+	local maxHeight = math.max(MIN_HEIGHT, UIParent:GetHeight() or MIN_HEIGHT)
+	local width = tonumber(ns.account.configWidth) or WIDTH
+	local height = tonumber(ns.account.configHeight) or HEIGHT
+	return math.min(math.max(width, MIN_WIDTH), maxWidth), math.min(math.max(height, MIN_HEIGHT), maxHeight), maxWidth, maxHeight
+end
+
+-- Where the settings start below the title: under the tabs, which share a row with the switches at
+-- the top when the window is wide enough, and drop below them when it isn't.
+local INSET_TOP, INSET_TOP_STACKED = -60, -88
+
+-- Drag the bottom right corner to resize the window. Every tab lays itself out again to fit.
+local function CreateResizeGrip(frame)
+	local grip = CreateFrame("Button", nil, frame)
+	grip:SetSize(16, 16)
+	grip:SetPoint("BOTTOMRIGHT", -4, 4)
+	grip:SetFrameLevel(frame:GetFrameLevel() + 20)
+	grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+	grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+	grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+	grip:SetScript("OnMouseDown", function(_, button)
+		if button == "LeftButton" then
+			frame:StartSizing("BOTTOMRIGHT")
+		end
+	end)
+	grip:SetScript("OnMouseUp", function()
+		frame:StopMovingOrSizing()
+		ns.account.configWidth = math.floor(frame:GetWidth() + 0.5)
+		ns.account.configHeight = math.floor(frame:GetHeight() + 0.5)
+	end)
+	return grip
+end
+
 local function CreateConfig()
-	local frame = CreatePanel("DibsUIConfig", UIParent, WIDTH, HEIGHT, "DibsUI")
+	local width, height, maxWidth, maxHeight = GetWindowSize()
+	local frame = CreatePanel("DibsUIConfig", UIParent, width, height, "DibsUI")
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("HIGH")
 	frame:SetClampedToScreen(true)
 	frame:SetMovable(true)
+	frame:SetResizable(true)
+	if frame.SetResizeBounds then
+		frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, maxWidth, maxHeight)
+	else
+		frame:SetMinResize(MIN_WIDTH, MIN_HEIGHT)
+		frame:SetMaxResize(maxWidth, maxHeight)
+	end
 	frame:RegisterForDrag("LeftButton")
 	frame:SetScript("OnDragStart", frame.StartMoving)
 	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 	frame:SetDontSavePosition(true)
 	tinsert(UISpecialFrames, frame:GetName())
+	CreateResizeGrip(frame)
 
 	local minimapToggle = CreateTopToggle(frame, "Show minimap button", ns.SetMinimapButtonShown)
 	minimapToggle:SetPoint("TOPRIGHT", -14, -26)
@@ -1213,9 +1322,16 @@ local function CreateConfig()
 		ns.SetLocked(not checked)
 	end)
 	unlockToggle:SetPoint("RIGHT", minimapToggle, "LEFT", -28, 0)
+	-- /dibsui lock can change it while the window is open. A click on the switch is already showing,
+	-- sliding across.
+	hooksecurefunc(ns, "SetLocked", function()
+		if unlockToggle.toggle:GetChecked() ~= not ns.db.locked then
+			unlockToggle.toggle:SetChecked(not ns.db.locked)
+		end
+	end)
 
 	local inset = CreateFrame("Frame", nil, frame, "InsetFrameTemplate")
-	inset:SetPoint("TOPLEFT", 10, -60)
+	inset:SetPoint("TOPLEFT", 10, INSET_TOP)
 	inset:SetPoint("BOTTOMRIGHT", -8, 30)
 
 	local pages = {}
@@ -1246,22 +1362,24 @@ local function CreateConfig()
 			PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
 		end)
 
-		-- Every tab lays out in two columns.
-		local page = CreateFrame("Frame", nil, inset)
-		page:SetAllPoints()
-		page:Hide()
-		local left = CreateFrame("Frame", nil, page)
-		left:SetSize(1, 1)
-		left:SetPoint("TOPLEFT", 16, -10)
-		local right = CreateFrame("Frame", nil, page)
-		right:SetSize(1, 1)
-		right:SetPoint("TOPLEFT", left, "TOPLEFT", COLUMN_WIDTH + COLUMN_GAP, 0)
-		page.options = info.build(page, left, right, context)
+		local page = CreateScrollPage(inset)
+		page.options = info.build(page.content, context, function() page:Relayout() end)
 		pages[i] = page
 	end
 	PanelTemplates_SetNumTabs(frame, #TABS)
 	PanelTemplates_SetTab(frame, 1)
 	pages[1]:Show()
+
+	local function FitHeader()
+		local tabsWidth = 18
+		for _, tab in ipairs(frame.Tabs) do
+			tabsWidth = tabsWidth + (tab:GetWidth() or 0) + 4
+		end
+		local togglesWidth = (unlockToggle:GetWidth() or 0) + 28 + (minimapToggle:GetWidth() or 0) + 14
+		local stacked = (frame:GetWidth() or 0) < tabsWidth + togglesWidth + 16
+		inset:SetPoint("TOPLEFT", 10, stacked and INSET_TOP_STACKED or INSET_TOP)
+	end
+	frame:HookScript("OnSizeChanged", FitHeader)
 
 	local combatNote = CreateLabel(frame, "GameFontDisableSmall", "Frame size, position and profiles can't be changed during combat")
 	combatNote:SetPoint("BOTTOM", 0, 11)
@@ -1281,9 +1399,13 @@ local function CreateConfig()
 	end)
 
 	frame:SetScript("OnShow", function()
+		FitHeader()
 		minimapToggle.toggle:SetChecked(ns.account.showMinimapButton)
 		context.SyncAll()
 		SetCombatLocked(InCombatLockdown())
+		for _, page in ipairs(pages) do
+			page:Relayout()
+		end
 	end)
 
 	return frame
@@ -1299,6 +1421,29 @@ function ns.ToggleConfig()
 	config:SetShown(not config:IsShown())
 end
 
+-- Locks or unlocks the frames, like the switch at the top of the window, and says which. Like the
+-- switch, it waits for combat to end.
+function ns.ToggleLocked()
+	if InCombatLockdown() then
+		print("|cffffd100DibsUI|r: frames can't be locked or unlocked during combat.")
+		return
+	end
+	ns.SetLocked(not ns.db.locked)
+	if ns.db.locked then
+		print("|cffffd100DibsUI|r: frames locked.")
+	else
+		print("|cffffd100DibsUI|r: frames unlocked. Type /dibsui lock again to lock them.")
+	end
+end
+
+-- /dibsui opens or closes the settings, and /dibsui lock locks or unlocks the frames.
 SLASH_DIBSUI1 = "/dibsui"
 SLASH_DIBSUI2 = "/dui"
-SlashCmdList.DIBSUI = ns.ToggleConfig
+SlashCmdList.DIBSUI = function(message)
+	local command = (message or ""):match("^%s*(.-)%s*$"):lower()
+	if command == "lock" then
+		ns.ToggleLocked()
+	else
+		ns.ToggleConfig()
+	end
+end

@@ -5,6 +5,7 @@
 ## Notes: Replaces the player and target frames with a winged power orb layout.
 ## SavedVariables: DibsUIDB
 ## OptionalDeps: Masque
+## X-Curse-Project-ID: 1794621
 
 Core.lua
 Text.lua
