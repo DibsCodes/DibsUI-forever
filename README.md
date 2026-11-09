@@ -61,7 +61,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - With one frame turned off, the other shows every buff
 - Long buffs can be placed anywhere, with a growth direction and frame width, or switched to List mode: one buff per line, longest at the top, with its name and time beside the icon
 - Weapon enchants, such as poisons and oils, show at the start of the long buffs
-- Short buffs sit above the player bar, as wide as it and clear of your name, filling left from the orb, then up
+- Short buffs sit above the player bar, as wide as it and clear of your name, filling right towards the orb, then up
 - Hover a buff for its tooltip, and right-click it out of combat to cancel it
 - Icons can be skinned with Masque
 

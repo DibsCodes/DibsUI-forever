@@ -53,7 +53,7 @@ ns.AuraAnchorTargets = {
 ns.AuraGroups = {
 	{ key = "playerLongBuffs", label = "Player long buffs", built = true, hasListMode = true },
 	{ key = "playerShortBuffs", label = "Player short buffs", built = true, anchored = true,
-		anchorNote = "Sits above the player bar, as wide as it and clear of your name, and fills left, then up." },
+		anchorNote = "Sits above the player bar, as wide as it and clear of your name, and fills right, then up." },
 	{ key = "playerDebuffs", label = "Player debuffs" },
 	{ key = "targetBuffs", label = "Target buffs" },
 	{ key = "targetDebuffs", label = "Target debuffs" },
@@ -107,8 +107,8 @@ local GROUP_DEFAULTS = {
 	},
 }
 
--- The short buffs always fill from the bar's orb end, leftwards, then up.
-local SHORT_BUFF_GROWTH = "LEFT_UP"
+-- The short buffs always fill from the bar's outer end, towards the orb, then up.
+local SHORT_BUFF_GROWTH = "RIGHT_UP"
 
 -- List mode's own settings, kept in a group's list table. The name is white and the time a
 -- little smaller and off-white. List mode has its own position, at the top left of the screen.
