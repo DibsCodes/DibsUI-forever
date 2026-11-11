@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Heal and absorb prediction on the player and target health bars. Incoming heals carry on from the end of the health in a darker shade of the bar's color, with absorbs in blue after them. Neither runs past the end of the bar, and the bar's end glows when either one is cut short there
+- Thanks to Alectris for his help
+
 ## 0.1.0
 
 First public build, for WoW Forever 1.60.1.

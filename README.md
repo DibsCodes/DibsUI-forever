@@ -31,6 +31,12 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Name and difficulty-colored level above the bar, with the bar and name colored like the target's
 - Can be turned off in the settings
 
+**Heal and absorb prediction**
+- On the player and target health bars, incoming heals carry on from the end of the health, in a darker shade of the bar's own color
+- Absorb shields come after the heals, in blue
+- Neither runs past the end of the bar. When one would, the bar's end glows instead
+- Uses the client's own heal calculator, so it keeps working in combat when health is a secret value
+
 **Orb (center)**
 - Fills from the bottom with your power, with the amount in the middle
 - Mana is a deep blue liquid that slowly swirls, and rage is thick, dark blood. Other power types are a liquid in their own color
@@ -261,6 +267,8 @@ Early development, for interface version 16001.
 
 So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs, how the settings window looks in the live game, and profiles across real characters, still needs checking in-game.
 
+Heal and absorb prediction hasn't been checked with real heals and shields yet, since the simulator doesn't calculate them.
+
 The buff frames are newer still: the simulator can't show real buffs in Blizzard's aura container, the offline checks don't cover them yet, and player debuffs and target buffs and debuffs haven't been checked in-game yet.
 
 ## Known limitations
@@ -281,6 +289,7 @@ The buff frames are newer still: the simulator can't show real buffs in Blizzard
 - With player debuffs on, Blizzard's debuff frame is hidden, along with the private auras some boss fights show on it
 - In List mode, names longer than the space beside the icons run past the frame
 - The long buffs' drag handle is sized from the buffs you had the last time they could be read
+- Absorbs are hard to tell apart from health on blue bars, such as a shaman's
 
 ## License
 

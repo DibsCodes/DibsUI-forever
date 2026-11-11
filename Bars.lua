@@ -15,12 +15,51 @@ VISIBLE_ABOVE_ZERO:SetType(Enum.LuaCurveType.Step)
 VISIBLE_ABOVE_ZERO:AddPoint(0, 0)
 VISIBLE_ABOVE_ZERO:AddPoint(0.001, 1)
 
+-- Incoming heals take the bar's own color mixed this far toward the dark backing, so they read as
+-- the same color but apart from the health in front of them. Absorbs are blue.
+local HEAL_SHADE = 0.4
+local BACKING = { 0.075, 0.09, 0.125 }
+local ABSORB_COLOR = { 0.35, 0.72, 1.00 }
+local GLOW_COLOR = CreateColor(1, 1, 1, 1)
+local CLEAR = CreateColor(0, 0, 0, 0)
+
+local PREDICTION_EVENTS = {
+	UNIT_HEAL_PREDICTION = true,
+	UNIT_ABSORB_AMOUNT_CHANGED = true,
+	UNIT_HEAL_ABSORB_AMOUNT_CHANGED = true,
+}
+
 local function SetBarColor(bar, r, g, b)
 	bar:SetStatusBarColor(r, g, b)
 	bar.cap:SetVertexColor(r, g, b)
 	if bar.wedge then
 		bar.wedge:SetVertexColor(r, g, b)
 	end
+	local heal = bar.heal
+	if heal then
+		r = r + (BACKING[1] - r) * HEAL_SHADE
+		g = g + (BACKING[2] - g) * HEAL_SHADE
+		b = b + (BACKING[3] - b) * HEAL_SHADE
+		heal:SetStatusBarColor(r, g, b)
+		heal.cap:SetVertexColor(r, g, b)
+	end
+end
+
+-- A triangle riding on the fill's moving edge gives it the same slant as the bar's outline.
+-- The pieces meet edge to edge: an overlap would show as a line at the resting opacity.
+local function CreateFillCap(bar, spec, side)
+	local fill = bar:GetStatusBarTexture()
+	local cap = ns.CreateArt(bar, "ARTWORK", "BarFillCap")
+	cap:SetWidth(spec.capWidth)
+	if side < 0 then
+		cap:SetPoint("TOPRIGHT", fill, "TOPLEFT")
+		cap:SetPoint("BOTTOMRIGHT", fill, "BOTTOMLEFT")
+		cap:SetTexCoord(1, 0, 0, 1)
+	else
+		cap:SetPoint("TOPLEFT", fill, "TOPRIGHT")
+		cap:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT")
+	end
+	bar.cap = cap
 end
 
 local bars = {}
@@ -84,6 +123,12 @@ local function LayoutBar(button)
 	button.bar:ClearAllPoints()
 	button.bar:SetPoint("CENTER", body, "CENTER", side * ((fillOuter + spec.fillInner) / 2 - centerDistance), 0)
 
+	local prediction = button.prediction
+	if prediction then
+		prediction.heal:SetWidth(fillOuter - spec.fillInner)
+		prediction.absorb:SetWidth(fillOuter - spec.fillInner)
+	end
+
 	if button.nameText then
 		button.nameText.box:SetWidth(width - button.nameReserved)
 		ns.RefreshName(button.nameText)
@@ -112,20 +157,7 @@ local function CreateBar(name, unit, spec, side, visualParent)
 	bar:SetFillStyle(Enum.StatusBarFillStyle.StandardNoRangeFill)
 	bar:SetReverseFill(side < 0)
 
-	-- A triangle riding on the fill's moving edge gives it the same slant as the bar's outline.
-	-- The pieces meet edge to edge: an overlap would show as a line at the resting opacity.
-	local fill = bar:GetStatusBarTexture()
-	local cap = ns.CreateArt(bar, "ARTWORK", "BarFillCap")
-	cap:SetWidth(spec.capWidth)
-	if side < 0 then
-		cap:SetPoint("TOPRIGHT", fill, "TOPLEFT")
-		cap:SetPoint("BOTTOMRIGHT", fill, "BOTTOMLEFT")
-		cap:SetTexCoord(1, 0, 0, 1)
-	else
-		cap:SetPoint("TOPLEFT", fill, "TOPRIGHT")
-		cap:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT")
-	end
-	bar.cap = cap
+	CreateFillCap(bar, spec, side)
 
 	if spec.wedgeWidth then
 		local wedge = ns.CreateArt(bar, "ARTWORK", spec.wedgeArt)
@@ -170,6 +202,125 @@ local function UpdateHealth(bar, unit, interpolation)
 	bar:SetValue(UnitHealth(unit), interpolation)
 	-- A slanted fill would still show a sliver of the corner at zero or ghost health.
 	bar:SetShown(not UnitIsDeadOrGhost(unit))
+end
+
+-- A bar as wide as the health bar whose fill starts where the previous one's fill ends.
+local function CreatePredictionSegment(parent, level, previous, button)
+	local spec, side = button.spec, button.side
+	local segment = CreateFrame("StatusBar", nil, parent)
+	segment:SetFrameLevel(level)
+	segment:SetStatusBarTexture(ns.Media("BarFill"))
+	segment:SetFillStyle(Enum.StatusBarFillStyle.StandardNoRangeFill)
+	segment:SetReverseFill(side < 0)
+	segment:SetHeight(spec.fillHeight)
+	local fill = previous:GetStatusBarTexture()
+	if side < 0 then
+		segment:SetPoint("RIGHT", fill, "LEFT")
+	else
+		segment:SetPoint("LEFT", fill, "RIGHT")
+	end
+	CreateFillCap(segment, spec, side)
+	return segment
+end
+
+-- A glow over the bar's slanted outer end, faded in when one of the amounts was cut short there.
+local function CreateEndGlow(parent, button)
+	local spec, side = button.spec, button.side
+	local glow = ns.CreateArt(parent, "ARTWORK", "BarEndGlow")
+	glow:SetBlendMode("ADD")
+	glow:SetWidth(spec.capWidth * 2)
+	if side < 0 then
+		glow:SetPoint("TOPLEFT", button.bar, "TOPLEFT", -spec.capWidth, 0)
+		glow:SetPoint("BOTTOMLEFT", button.bar, "BOTTOMLEFT", -spec.capWidth, 0)
+		glow:SetTexCoord(1, 0, 0, 1)
+	else
+		glow:SetPoint("TOPRIGHT", button.bar, "TOPRIGHT", spec.capWidth, 0)
+		glow:SetPoint("BOTTOMRIGHT", button.bar, "BOTTOMRIGHT", spec.capWidth, 0)
+	end
+	glow:SetVertexColor(CLEAR:GetRGBA())
+	return glow
+end
+
+-- Incoming heals, then absorbs after them, carried on from the end of the health fill. The amounts
+-- can be secret, so addon code can't add them up or compare them with the missing health. The
+-- client's calculator clamps them instead, and each goes into a full width bar that starts where
+-- the one before it ends. A clip at the bar's end catches the moment the health is still sliding.
+local function CreatePrediction(button)
+	if not CreateUnitHealPredictionCalculator then
+		return
+	end
+	local spec, side, bar, body = button.spec, button.side, button.bar, button.body
+	local level = body:GetFrameLevel()
+
+	local clip = CreateFrame("Frame", nil, body)
+	clip:SetFrameLevel(level + 1)
+	clip:SetClipsChildren(true)
+	if side < 0 then
+		clip:SetPoint("TOPLEFT", bar, "TOPLEFT", -spec.capWidth, 0)
+		clip:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT")
+	else
+		clip:SetPoint("TOPLEFT", bar, "TOPLEFT")
+		clip:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", spec.capWidth, 0)
+	end
+
+	-- Each piece sits under the one before it, so its slanted start hides under that one's cap, and
+	-- an empty piece's cap stays hidden under the cap in front of it.
+	local heal = CreatePredictionSegment(clip, level + 2, bar, button)
+	local absorb = CreatePredictionSegment(clip, level + 1, heal, button)
+	absorb:SetStatusBarColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3])
+	absorb.cap:SetVertexColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3])
+	bar:SetFrameLevel(level + 3)
+
+	local glowFrame = CreateFrame("Frame", nil, clip)
+	glowFrame:SetAllPoints()
+	glowFrame:SetFrameLevel(level + 4)
+	button.overlay:SetFrameLevel(level + 5)
+
+	local calculator = CreateUnitHealPredictionCalculator()
+	calculator:SetIncomingHealClampMode(Enum.UnitIncomingHealClampMode.MissingHealth)
+	calculator:SetIncomingHealOverflowPercent(1)
+	-- Despite the name, this one takes the incoming heals off the missing health first.
+	calculator:SetDamageAbsorbClampMode(Enum.UnitDamageAbsorbClampMode.MissingHealth)
+
+	bar.heal = heal
+	button.prediction = {
+		frame = clip,
+		heal = heal,
+		absorb = absorb,
+		healGlow = CreateEndGlow(glowFrame, button),
+		absorbGlow = CreateEndGlow(glowFrame, button),
+		calculator = calculator,
+	}
+end
+
+local function UpdatePrediction(button, unit, interpolation)
+	local prediction = button.prediction
+	if not prediction then
+		return
+	end
+	local calculator = prediction.calculator
+	UnitGetDetailedHealPrediction(unit, nil, calculator)
+	local heals, _, _, healsClamped = calculator:GetIncomingHeals()
+	local absorbs, absorbsClamped = calculator:GetDamageAbsorbs()
+	local maxHealth = UnitHealthMax(unit)
+	prediction.heal:SetMinMaxValues(0, maxHealth)
+	prediction.heal:SetValue(heals, interpolation)
+	prediction.absorb:SetMinMaxValues(0, maxHealth)
+	prediction.absorb:SetValue(absorbs, interpolation)
+	-- One glow or the other, never both: the flags can be secret, so the client picks between
+	-- colors. Clear when heals were cut short, since then no absorb shows anyway.
+	prediction.healGlow:SetVertexColorFromBoolean(healsClamped, GLOW_COLOR, CLEAR)
+	prediction.absorbGlow:SetVertexColorFromBoolean(healsClamped, CLEAR, GLOW_COLOR)
+	prediction.absorbGlow:SetAlphaFromBoolean(absorbsClamped, 1, 0)
+	prediction.frame:SetShown(not UnitIsDeadOrGhost(unit))
+end
+
+local function RegisterPredictionEvents(button, unit)
+	if button.prediction then
+		for event in pairs(PREDICTION_EVENTS) do
+			button.bar:RegisterUnitEvent(event, unit)
+		end
+	end
 end
 
 local function UpdatePower(bar, unit, interpolation)
@@ -229,6 +380,7 @@ end
 local function CreatePlayerHealth()
 	local button = CreateBar("DibsUIPlayerHealth", "player", Layout.health, -1, ns.root)
 	local bar = button.bar
+	CreatePrediction(button)
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
 
@@ -241,9 +393,16 @@ local function CreatePlayerHealth()
 	bar:RegisterEvent("PLAYER_DEAD")
 	bar:RegisterEvent("PLAYER_ALIVE")
 	bar:RegisterEvent("PLAYER_UNGHOST")
+	RegisterPredictionEvents(button, "player")
 	bar:SetScript("OnEvent", function(self, event)
+		-- Updating the health here too would cut short a slide that's still under way.
+		if PREDICTION_EVENTS[event] then
+			UpdatePrediction(button, "player", SMOOTH)
+			return
+		end
 		local interpolation = event == "UNIT_HEALTH" and SMOOTH or IMMEDIATE
 		UpdateHealth(self, "player", interpolation)
+		UpdatePrediction(button, "player", interpolation)
 		ns.ShowValue(left, "player")
 		ns.ShowValue(right, "player")
 	end)
@@ -443,6 +602,7 @@ local function CreateTargetBars(wing)
 	local powerText = ns.CreateValueText(powerButton.overlay, "targetPowerRight", powerButton.body, "RIGHT", powerButton)
 
 	CreateTargetName(healthButton)
+	CreatePrediction(healthButton)
 
 	local health = healthButton.bar
 	health:RegisterUnitEvent("UNIT_HEALTH", "target")
@@ -452,12 +612,18 @@ local function CreateTargetBars(wing)
 	health:RegisterUnitEvent("UNIT_CONNECTION", "target")
 	health:RegisterEvent("PLAYER_TARGET_CHANGED")
 	health:RegisterEvent("PLAYER_ENTERING_WORLD")
+	RegisterPredictionEvents(healthButton, "target")
 	health:SetScript("OnEvent", function(self, event)
 		if not UnitExists("target") then
 			return
 		end
+		if PREDICTION_EVENTS[event] then
+			UpdatePrediction(healthButton, "target", SMOOTH)
+			return
+		end
 		local interpolation = event == "UNIT_HEALTH" and SMOOTH or IMMEDIATE
 		UpdateHealth(self, "target", interpolation)
+		UpdatePrediction(healthButton, "target", interpolation)
 		UpdateTargetColor(self, "target")
 		ns.ShowValue(healthText, "target")
 	end)
