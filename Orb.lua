@@ -309,7 +309,7 @@ local CHANNEL_END_EVENTS = {
 	UNIT_SPELLCAST_EMPOWER_STOP = true,
 }
 
--- Below the orb: a round spell icon beside the name, then "current / total" under them.
+-- Below the orb, or above it: a round spell icon beside the name, then "current / total" under them.
 local function CreateCastInfo(orb)
 	local info = CreateFrame("Frame", nil, orb)
 	info:SetAllPoints()
@@ -333,7 +333,22 @@ local function CreateCastInfo(orb)
 	ns.PlaceText(name, "LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
 
 	local timeText = ns.CreateText(info, "castTime", orb)
-	ns.PlaceText(timeText, "CENTER", orb, "CENTER", timeSpec.x, timeSpec.y)
+
+	-- How wide the icon and name are together, measured when a cast starts.
+	local rowWidth = iconSpec.size
+
+	local function GetY(spec)
+		return ns.db.castTextPlacement == "above" and spec.yAbove or spec.y
+	end
+
+	-- Centres the icon and name as one group over or under the orb, and puts the time beside them.
+	local function Place()
+		icon:ClearAllPoints()
+		icon:SetPoint("CENTER", orb, "CENTER", iconSpec.x + (iconSpec.size - rowWidth) / 2, GetY(iconSpec))
+		ns.MoveText(timeText, "CENTER", orb, "CENTER", timeSpec.x, GetY(timeSpec))
+	end
+	Place()
+	ns.UpdateCastTextPlacement = Place
 
 	local startMS, endMS, countsDown
 	local sinceUpdate = 0
@@ -358,10 +373,8 @@ local function CreateCastInfo(orb)
 		icon:SetTexture(texture)
 		name:SetText(spellName)
 
-		-- Centres the icon and name as one group under the orb.
-		local rowWidth = iconSpec.size + nameSpec.x + name:GetStringWidth()
-		icon:ClearAllPoints()
-		icon:SetPoint("CENTER", orb, "CENTER", iconSpec.x + (iconSpec.size - rowWidth) / 2, iconSpec.y)
+		rowWidth = iconSpec.size + nameSpec.x + name:GetStringWidth()
+		Place()
 
 		UpdateTime()
 		self:Show()

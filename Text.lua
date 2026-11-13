@@ -8,6 +8,7 @@ ns.TextGroups = {
 		{ key = "playerName", label = "Above", shows = "Name and level", defaultColor = "Class color, with a yellow level" },
 		{ key = "playerLeft", label = "Left side", values = "health", defaultFormat = "missing", defaultColor = "White" },
 		{ key = "playerRight", label = "Right side", values = "health", defaultFormat = "current", defaultColor = "White" },
+		{ key = "pvpTimer", label = "PvP timer", shows = "Time left before the PvP flag drops", defaultColor = "Gold" },
 	} },
 	{ label = "Pet bar", fields = {
 		{ key = "petName", label = "Above", shows = "Name and level", defaultColor = "White, with a yellow level" },
@@ -29,8 +30,8 @@ ns.TextGroups = {
 		{ key = "orbCenter", label = "Center", values = "power", defaultFormat = "current", defaultColor = "White" },
 	} },
 	{ label = "Cast", fields = {
-		{ key = "castName", label = "Top line", shows = "Spell name", defaultColor = "White" },
-		{ key = "castTime", label = "Bottom line", shows = "Time", defaultColor = "White" },
+		{ key = "castName", label = "Spell name", shows = "Spell name", defaultColor = "White" },
+		{ key = "castTime", label = "Time", shows = "Time", defaultColor = "White" },
 	} },
 }
 
@@ -234,6 +235,13 @@ function ns.PlaceText(text, point, relativeTo, relativePoint, x, y)
 	table.insert(text.anchors, { point, relativeTo, relativePoint, x, y })
 	region:SetPoint(point, relativeTo, relativePoint,
 		x + ns.GetTextOption(text.styleKey, "offsetX"), y + ns.GetTextOption(text.styleKey, "offsetY"))
+end
+
+-- Places a text somewhere else, dropping where it was. The settings' offset still applies.
+function ns.MoveText(text, point, relativeTo, relativePoint, x, y)
+	text.anchors = nil
+	;(text.box or text):ClearAllPoints()
+	ns.PlaceText(text, point, relativeTo, relativePoint, x, y)
 end
 
 -- Lays a name out in its box: the plain name, or "First Last" with the level after when last names are

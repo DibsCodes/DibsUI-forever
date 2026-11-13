@@ -408,6 +408,8 @@ local function BuildGeneral(content)
 	local framesCard = CreateCard(content, "Frames")
 	local showToT = framesCard:Add(CreateToggleRow(framesCard, "Show target of target", ns.SetTargetOfTargetShown))
 	local surnames = framesCard:Add(CreateToggleRow(framesCard, "Show last names", ns.SetSurnamesShown))
+	local prediction = framesCard:Add(CreateToggleRow(framesCard, "Show incoming heals and absorbs", ns.SetHealPredictionShown))
+	local pvpIcon = framesCard:Add(CreateToggleRow(framesCard, "Show PvP icon and timer", ns.SetPvPIconShown))
 
 	local sizeCard = CreateCard(content, "Scale and width")
 	local scale = sizeCard:Add(CreateSliderRow(sizeCard, "Scale", ns.ScaleRange, FormatScale,
@@ -450,6 +452,25 @@ local function BuildGeneral(content)
 		function() return math.floor(ns.db.manualOpacity * 100 + 0.5) end,
 		function(value) ns.SetManualOpacity(value / 100) end), 4)
 
+	-- Where the spell name and time go. Their font, size and color are with the other text.
+	local castCard = CreateCard(content, "Cast")
+	local placementRow = castCard:Add(CreateDropdownRow(castCard, "Spell name and time"))
+	local castHint = castCard:Add(CreateLabel(castCard, "GameFontDisableSmall",
+		"Their font, size and color are in the Text tab, as Cast: Spell name and Cast: Time."))
+	castHint:SetWordWrap(true)
+
+	local CAST_PLACEMENTS = {
+		{ key = "below", label = "Below the orb" },
+		{ key = "above", label = "Above the orb" },
+	}
+	placementRow.dropdown:SetupMenu(function(_, root)
+		for _, placement in ipairs(CAST_PLACEMENTS) do
+			root:CreateRadio(placement.label,
+				function() return ns.db.castTextPlacement == placement.key end,
+				function() ns.SetCastTextPlacement(placement.key) end, placement)
+		end
+	end)
+
 	local function SyncOpacity()
 		modeRow.dropdown:GenerateMenu()
 		modeHint:SetText(ns.OpacityModesByKey[ns.db.opacityMode].description)
@@ -473,7 +494,10 @@ local function BuildGeneral(content)
 	function options.Sync()
 		showToT.toggle:SetChecked(ns.db.showTargetOfTarget)
 		surnames.toggle:SetChecked(ns.db.showSurnames)
+		prediction.toggle:SetChecked(ns.db.showHealPrediction)
+		pvpIcon.toggle:SetChecked(ns.db.showPvPIcon)
 		SyncOpacity()
+		placementRow.dropdown:GenerateMenu()
 		scale:Sync()
 		width:Sync()
 		petWidth:Sync()
@@ -486,7 +510,7 @@ local function BuildGeneral(content)
 	end
 
 	function options.Layout(pageWidth)
-		return LayoutCards({ framesCard, sizeCard, positionCard, opacityCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
+		return LayoutCards({ framesCard, sizeCard, positionCard, opacityCard, castCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
 	end
 
 	return options

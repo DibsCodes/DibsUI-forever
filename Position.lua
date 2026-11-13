@@ -18,6 +18,9 @@ local PROFILE_DEFAULTS = {
 	petWidth = 1,
 	showTargetOfTarget = true,
 	showSurnames = false,
+	showHealPrediction = true,
+	showPvPIcon = true,
+	castTextPlacement = "below", -- or "above" the orb
 	opacityMode = "smart",
 	manualOpacity = 0.6,
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
@@ -111,6 +114,9 @@ function ns.CleanProfile(profile)
 		profile.manualOpacity = PROFILE_DEFAULTS.manualOpacity
 	end
 	profile.manualOpacity = Clamp(profile.manualOpacity, ns.OpacityRange)
+	if profile.castTextPlacement ~= "below" and profile.castTextPlacement ~= "above" then
+		profile.castTextPlacement = PROFILE_DEFAULTS.castTextPlacement
+	end
 	profile.text = CleanTextStyles(profile.text)
 	profile.auras = ns.CleanAuraSettings(profile.auras)
 	return profile
@@ -342,6 +348,15 @@ function ns.ApplyProfile()
 	UpdateMover()
 	ns.RefreshAllText()
 	ns.RefreshAuraFrames()
+	ns.UpdateHealPredictionShown()
+	ns.UpdatePvPIndicator()
+	ns.UpdateCastTextPlacement()
+end
+
+-- Not protected, so this works in combat, even mid-cast.
+function ns.SetCastTextPlacement(placement)
+	ns.db.castTextPlacement = placement
+	ns.UpdateCastTextPlacement()
 end
 
 -- Last names are only text, so this works in combat too.

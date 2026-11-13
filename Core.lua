@@ -73,6 +73,7 @@ ns.Text = {
 	playerLeft = { size = 14, x = 22, y = 0 }, -- LEFT of the left bar
 	playerRight = { size = 14, x = -17, y = 0 }, -- RIGHT of the left bar
 	playerName = { size = 15, x = 0, y = 3 }, -- BOTTOM of the text to the TOP of the left bar
+	pvpTimer = { size = 12, x = 3, y = 0 }, -- LEFT of the text to the RIGHT of the PvP icon under the left bar
 
 	targetRight = { size = 10, x = -22, y = 0 }, -- RIGHT of the right bar
 	targetPowerRight = { size = 10, x = -13, y = 0 }, -- RIGHT of the power bar
@@ -86,9 +87,11 @@ ns.Text = {
 	totName = { size = 15, x = 18, y = 3 }, -- BOTTOMLEFT of the text to the TOPLEFT of the bar; runs up to totLevel, centred between
 	totLevel = { size = 12, x = -1, y = 3 }, -- BOTTOMRIGHT to the TOPRIGHT of the target of target bar
 
-	castIcon = { size = 20, x = 0, y = -86 }, -- centre of the icon and name row, from the orb CENTER
+	-- The cast shows below the orb, or above it if the settings say so. Either way the spell name sits
+	-- over the time, so above the orb the two swap distances.
+	castIcon = { size = 20, x = 0, y = -86, yAbove = 105 }, -- centre of the icon and name row, from the orb CENTER
 	castName = { size = 13, x = 5, y = 0 }, -- LEFT of the text to the RIGHT of the icon
-	castTime = { size = 12, x = 0, y = -105 }, -- CENTER of the text, from the orb CENTER
+	castTime = { size = 12, x = 0, y = -105, yAbove = 86 }, -- CENTER of the text, from the orb CENTER
 
 	moverLabel = { size = 14, x = 0, y = -6 }, -- TOP of the text to the TOP of the drag handle
 }
@@ -208,6 +211,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.LoadSettings()
 			ns.CreateRoot()
 			ns.CreateBars()
+			ns.CreateIndicators()
 			ns.CreateOrb()
 			ns.CreateMover()
 			ns.CreateAuraFrames()

@@ -12,6 +12,8 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Health fills from the orb outwards, with current health on the right
 - Missing health on the left, hidden at full health
 - Class-colored name and yellow level above the bar
+- An animated Zzz at the top left while you're resting
+- While you're flagged for PvP, your faction's icon under the bar's outer corner, with the time left before the flag drops. It can be turned off in the settings
 
 **Pet bar (far left)**
 - Sits against the end of the player bar, and only shows when you have a pet
@@ -36,6 +38,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Absorb shields come after the heals, in blue
 - Neither runs past the end of the bar. When one would, the bar's end glows instead
 - Uses the client's own heal calculator, so it keeps working in combat when health is a secret value
+- Can be turned off in the settings
 
 **Orb (center)**
 - Fills from the bottom with your power, with the amount in the middle
@@ -55,7 +58,8 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 
 **Cast ring**
 - Fills clockwise around the orb while casting, and drains clockwise while channeling
-- Shows a round spell icon, the spell name and `current / total` time below the orb
+- Shows a round spell icon, the spell name and `current / total` time below the orb, or above it if you prefer
+- The spell name and time have their own font, size and color settings in the Text tab
 - Runs in grey for your main hand swing timer when you aren't casting
 
 **Player buffs**
@@ -145,6 +149,8 @@ At the top of the window, on every tab:
 |---|---|
 | Show target of target | Turns the target of target bar on or off. |
 | Show last names | Shows last names beside first names, smaller and off-white. |
+| Show incoming heals and absorbs | Turns heal and absorb prediction on the player and target bars on or off. |
+| Show PvP icon and timer | Turns the PvP icon and its countdown under the player bar on or off. |
 
 **Scale and width**
 
@@ -169,6 +175,14 @@ At the top of the window, on every tab:
 | Manual opacity | The opacity Manual holds, from 0% to 100%. |
 
 Unlocked frames always show at 100%, so you can see them to move them.
+
+**Cast**
+
+| Setting | What it does |
+|---|---|
+| Spell name and time | Below the orb or above it. Either way the spell name sits over the time. |
+
+The spell name's and time's font, size and color are in the Text tab, as **Cast: Spell name** and **Cast: Time**.
 
 ### Text
 
@@ -259,7 +273,7 @@ Profiles are shared by every character on your account, and each character remem
 
 The minimap button's settings are the same in every profile.
 
-Frame, position and profile settings can't be changed during combat, but text, last name, opacity, buff and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
+Frame, position and profile settings can't be changed during combat, but text, last name, heal prediction, PvP icon, opacity, cast text, buff and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
 
 ## Status
 
@@ -268,6 +282,8 @@ Early development, for interface version 16001.
 So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs, how the settings window looks in the live game, and profiles across real characters, still needs checking in-game.
 
 Heal and absorb prediction hasn't been checked with real heals and shields yet, since the simulator doesn't calculate them.
+
+The resting Zzz and the PvP icon and countdown were checked in the simulator by setting the resting and PvP state by hand. Real resting areas and real PvP flags still need checking in-game.
 
 The buff frames are newer still: the simulator can't show real buffs in Blizzard's aura container, the offline checks don't cover them yet, and player debuffs and target buffs and debuffs haven't been checked in-game yet.
 

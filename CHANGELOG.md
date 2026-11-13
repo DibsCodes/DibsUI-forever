@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2
+
+- An animated Zzz at the top left of the player bar while you're resting
+- A PvP icon under the player bar's outer corner while you're flagged, in your faction's colors (or free for all), with the time left before the flag drops. Its time can be moved and restyled in the Text tab as "Player bar: PvP timer"
+- New switches in General: Show incoming heals and absorbs, and Show PvP icon and timer
+- The cast's spell name and time can go above the orb instead of below it (General, Cast)
+- The cast text spots in the Text tab are now called Cast: Spell name and Cast: Time, instead of Top line and Bottom line
+- Fixed the slanted end of the player and target health bars looking too solid below 100% opacity. The empty heal and absorb pieces sat under it and showed through
+
 ## 0.1.1
 
 - Heal and absorb prediction on the player and target health bars. Incoming heals carry on from the end of the health in a darker shade of the bar's color, with absorbs in blue after them. Neither runs past the end of the bar, and the bar's end glows when either one is cut short there

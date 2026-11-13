@@ -204,6 +204,30 @@ local function UpdateHealth(bar, unit, interpolation)
 	bar:SetShown(not UnitIsDeadOrGhost(unit))
 end
 
+-- Hides everything on the near side of the previous bar's cap slant. Below 100% opacity each texture
+-- fades on its own, so anything under that cap would show through it: an empty segment's cap sitting
+-- right on it, or the square start of a segment's fill. The mask's left half is the cap's exact
+-- complement and its right half is solid. Clamping carries those edges on past the mask, so all of
+-- the bar beyond the slant stays visible and none of it before.
+local function MaskBehindCap(segment, previous, spec, side)
+	local mask = segment:CreateMaskTexture(nil, "ARTWORK")
+	mask:SetTexture(ns.Media("BarFillMask"), "CLAMP", "CLAMP")
+	mask:SetSnapToPixelGrid(false)
+	mask:SetTexelSnappingBias(0)
+	mask:SetWidth(spec.capWidth * 2)
+	local cap = previous.cap
+	if side < 0 then
+		mask:SetPoint("TOPRIGHT", cap, "TOPRIGHT")
+		mask:SetPoint("BOTTOMRIGHT", cap, "BOTTOMRIGHT")
+		mask:SetTexCoord(1, 0, 0, 1)
+	else
+		mask:SetPoint("TOPLEFT", cap, "TOPLEFT")
+		mask:SetPoint("BOTTOMLEFT", cap, "BOTTOMLEFT")
+	end
+	segment:GetStatusBarTexture():AddMaskTexture(mask)
+	segment.cap:AddMaskTexture(mask)
+end
+
 -- A bar as wide as the health bar whose fill starts where the previous one's fill ends.
 local function CreatePredictionSegment(parent, level, previous, button)
 	local spec, side = button.spec, button.side
@@ -220,6 +244,7 @@ local function CreatePredictionSegment(parent, level, previous, button)
 		segment:SetPoint("LEFT", fill, "RIGHT")
 	end
 	CreateFillCap(segment, spec, side)
+	MaskBehindCap(segment, previous, spec, side)
 	return segment
 end
 
@@ -245,10 +270,14 @@ end
 -- can be secret, so addon code can't add them up or compare them with the missing health. The
 -- client's calculator clamps them instead, and each goes into a full width bar that starts where
 -- the one before it ends. A clip at the bar's end catches the moment the health is still sliding.
-local function CreatePrediction(button)
+local predictionButtons = {}
+
+local function CreatePrediction(button, unit)
 	if not CreateUnitHealPredictionCalculator then
 		return
 	end
+	button.unit = unit
+	predictionButtons[#predictionButtons + 1] = button
 	local spec, side, bar, body = button.spec, button.side, button.bar, button.body
 	local level = body:GetFrameLevel()
 
@@ -263,8 +292,8 @@ local function CreatePrediction(button)
 		clip:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", spec.capWidth, 0)
 	end
 
-	-- Each piece sits under the one before it, so its slanted start hides under that one's cap, and
-	-- an empty piece's cap stays hidden under the cap in front of it.
+	-- Each piece is masked off behind the cap of the one before it, so it starts on that slant and
+	-- an empty piece's cap doesn't show at all, whatever the frame's opacity.
 	local heal = CreatePredictionSegment(clip, level + 2, bar, button)
 	local absorb = CreatePredictionSegment(clip, level + 1, heal, button)
 	absorb:SetStatusBarColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3])
@@ -298,6 +327,10 @@ local function UpdatePrediction(button, unit, interpolation)
 	if not prediction then
 		return
 	end
+	if not ns.db.showHealPrediction then
+		prediction.frame:Hide()
+		return
+	end
 	local calculator = prediction.calculator
 	UnitGetDetailedHealPrediction(unit, nil, calculator)
 	local heals, _, _, healsClamped = calculator:GetIncomingHeals()
@@ -313,6 +346,23 @@ local function UpdatePrediction(button, unit, interpolation)
 	prediction.absorbGlow:SetVertexColorFromBoolean(healsClamped, CLEAR, GLOW_COLOR)
 	prediction.absorbGlow:SetAlphaFromBoolean(absorbsClamped, 1, 0)
 	prediction.frame:SetShown(not UnitIsDeadOrGhost(unit))
+end
+
+-- Turns heal and absorb prediction on or off for every bar that has it. Nothing here is protected,
+-- so this works in combat.
+function ns.UpdateHealPredictionShown()
+	for _, button in ipairs(predictionButtons) do
+		if UnitExists(button.unit) then
+			UpdatePrediction(button, button.unit, IMMEDIATE)
+		else
+			button.prediction.frame:SetShown(ns.db.showHealPrediction)
+		end
+	end
+end
+
+function ns.SetHealPredictionShown(shown)
+	ns.db.showHealPrediction = shown
+	ns.UpdateHealPredictionShown()
 end
 
 local function RegisterPredictionEvents(button, unit)
@@ -380,7 +430,7 @@ end
 local function CreatePlayerHealth()
 	local button = CreateBar("DibsUIPlayerHealth", "player", Layout.health, -1, ns.root)
 	local bar = button.bar
-	CreatePrediction(button)
+	CreatePrediction(button, "player")
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
 
@@ -602,7 +652,7 @@ local function CreateTargetBars(wing)
 	local powerText = ns.CreateValueText(powerButton.overlay, "targetPowerRight", powerButton.body, "RIGHT", powerButton)
 
 	CreateTargetName(healthButton)
-	CreatePrediction(healthButton)
+	CreatePrediction(healthButton, "target")
 
 	local health = healthButton.bar
 	health:RegisterUnitEvent("UNIT_HEALTH", "target")
