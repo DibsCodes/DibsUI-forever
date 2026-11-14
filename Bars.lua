@@ -100,11 +100,11 @@ end
 -- Applies the width setting: the click area, the visible body, the art and the fill.
 local function LayoutBar(button)
 	local spec, side = button.spec, button.side
-	local growth = ns.GetBarGrowth(spec)
+	local growth = ns.GetBarGrowth(spec, side)
 	local tip = spec.tip + growth
 	local width = tip - spec.hitInner
 	local centerDistance = (tip + spec.hitInner) / 2
-	local shift = ns.GetBarShift(spec)
+	local shift = ns.GetBarShift(spec, side)
 
 	button:SetSize(width, spec.height)
 	button:ClearAllPoints()
@@ -492,7 +492,6 @@ local function CreatePetHealth()
 	local spec = Layout.pet
 	local button = CreateBar("DibsUIPetHealth", "pet", spec, -1, ns.root)
 	button:SetHitRectInsets(0, spec.hitInset, 0, 0)
-	RegisterUnitWatch(button)
 	local bar = button.bar
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
@@ -505,7 +504,7 @@ local function CreatePetHealth()
 	bar:RegisterEvent("PET_UI_UPDATE")
 	bar:RegisterEvent("PLAYER_ENTERING_WORLD")
 	bar:SetScript("OnEvent", function(self, event)
-		local hasPet = UnitExists("pet")
+		local hasPet = ns.db.showPet and UnitExists("pet")
 		button.body:SetShown(hasPet)
 		if not hasPet then
 			return
@@ -516,6 +515,19 @@ local function CreatePetHealth()
 	end)
 
 	CreatePetName(button)
+
+	-- Switched off, the pet bar stays hidden whether there's a pet or not. Its click area is a secure
+	-- button, so this can't change in combat.
+	function ns.UpdatePetShown()
+		if ns.db.showPet then
+			RegisterUnitWatch(button)
+		else
+			UnregisterUnitWatch(button)
+			button:Hide()
+		end
+		bar:GetScript("OnEvent")(bar, "PET_UI_UPDATE")
+	end
+	ns.UpdatePetShown()
 end
 
 -- Class color for friendly players, reaction color for friendly NPCs, otherwise the default white.
@@ -584,8 +596,7 @@ local function CreateTargetWing()
 
 	-- Far enough for everything on the wing to end up past the clip edge.
 	local function GetTuckedOffset()
-		local outerSpec = ns.db.showTargetOfTarget and Layout.pet or Layout.health
-		return Layout.wingClipInner - (outerSpec.tip + ns.GetBarGrowth(outerSpec) + ns.GetBarShift(outerSpec))
+		return Layout.wingClipInner - ns.GetWingReach(1)
 	end
 
 	local function OnUpdate(_, delta)
@@ -632,7 +643,7 @@ local function CreateTargetWing()
 		-- The target of target bar reaches past the root, and the clip has to leave room for it.
 		clip:ClearAllPoints()
 		clip:SetPoint("TOPLEFT", ns.root, "TOP", Layout.wingClipInner, Layout.wingClipHeadroom)
-		clip:SetPoint("BOTTOMRIGHT", ns.root, "BOTTOMRIGHT", ns.GetOuterBarOverhang(), 0)
+		clip:SetPoint("BOTTOMRIGHT", ns.root, "BOTTOM", ns.GetWingReach(1) + Layout.rootMargin, 0)
 		self:SetSize(ns.GetRootWidth(), Layout.rootHeight)
 		if not hasTarget then
 			Snap()

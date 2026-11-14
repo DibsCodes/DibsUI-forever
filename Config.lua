@@ -1,10 +1,14 @@
 local _, ns = ...
 
 -- The window's starting size, and the smallest it can be dragged to. It remembers its size.
-local WIDTH, HEIGHT = 760, 580
-local MIN_WIDTH, MIN_HEIGHT = 540, 360
+local WIDTH, HEIGHT = 900, 640
+local MIN_WIDTH, MIN_HEIGHT = 720, 420
 
--- Each tab's sections flow into as many columns as fit, up to three, each at least this wide.
+-- The tabs down the left.
+local NAV_WIDTH = 186
+local NAV_ROW_HEIGHT = 30
+
+-- Each page's sections flow into as many columns as fit, up to three, each at least this wide.
 local COLUMN_WIDTH = 280 -- a row's width until its page lays it out
 local COLUMN_MIN_WIDTH = 220
 local COLUMN_GAP = 24
@@ -12,6 +16,8 @@ local MAX_COLUMNS = 3
 local SECTION_GAP = 14 -- between sections in a column
 local SECTION_HEIGHT = 26
 local PAGE_PADDING = 16
+local HEADER_HEIGHT = 30 -- a page heading over a group of sections
+local HEADER_GAP = 22 -- above a page heading that follows sections
 
 local INPUT_WIDTH = 44
 local DROPDOWN_WIDTH = 190
@@ -23,6 +29,10 @@ local KNOB_QUAD, KNOB_TRAVEL = 24, 8
 local TOGGLE_SLIDE_TIME = 0.12
 local TOGGLE_ON = { 1.00, 0.76, 0.10 }
 local TOGGLE_OFF = { 0.30, 0.30, 0.33 }
+
+local LINK_SIZE = 20
+local LINKED_COLOR = TOGGLE_ON
+local UNLINKED_COLOR = { 0.55, 0.55, 0.58 }
 
 local function FormatScale(value)
 	return string.format("%.2f", value)
@@ -41,6 +51,25 @@ local function CreateLabel(parent, fontObject, text)
 	label:SetJustifyH("LEFT")
 	label:SetText(text)
 	return label
+end
+
+local function CreateHint(parent, text)
+	local hint = CreateLabel(parent, "GameFontDisableSmall", text)
+	hint:SetWordWrap(true)
+	return hint
+end
+
+local function ShowTooltip(owner, title, text)
+	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	GameTooltip:SetText(title)
+	if text then
+		GameTooltip:AddLine(text, 1, 1, 1, true)
+	end
+	GameTooltip:Show()
+end
+
+local function HideTooltip()
+	GameTooltip:Hide()
 end
 
 -- A gold heading with a divider under it, the way the game's settings group their options.
@@ -153,8 +182,74 @@ local function CreateToggleRow(parent, text, onChange)
 	return row
 end
 
--- A label, Blizzard's minimal slider with step arrows, and a box for typing an exact value.
-local function CreateSliderRow(parent, text, range, format, getValue, setValue)
+-- A switch for something that isn't built yet: greyed out and off, with a tag saying so. Each one keeps
+-- the name of the feature it's holding a place for, which is also in the implementation notes.
+local function CreatePlaceholderRow(parent, text, feature)
+	local row = CreateToggleRow(parent, text, function() end)
+	row.feature = feature
+	row:SetEnabled(false)
+	row.toggle:SetChecked(false)
+	local tag = CreateLabel(row, "GameFontDisableSmall", "Coming soon")
+	tag:SetPoint("RIGHT", row.toggle, "LEFT", -8, 0)
+	row:SetScript("OnEnter", function(self)
+		ShowTooltip(self, text, "Not built yet. This switch will work in a later version.")
+	end)
+	row:SetScript("OnLeave", HideTooltip)
+	-- Combat locking leaves these alone.
+	row.SetEnabled = function() end
+	return row
+end
+
+-- A chain that shows whether two frames share one width. Gold and joined while linked, grey and pulled
+-- apart while not. Clicking it links or unlinks them.
+local function CreateLinkButton(parent, pair, names)
+	local button = CreateFrame("Button", nil, parent)
+	button:SetSize(LINK_SIZE, LINK_SIZE)
+	button:SetMotionScriptsWhileDisabled(true)
+	local icon = button:CreateTexture(nil, "ARTWORK")
+	icon:SetAllPoints()
+	local glow = button:CreateTexture(nil, "HIGHLIGHT")
+	glow:SetAllPoints()
+	glow:SetBlendMode("ADD")
+	glow:SetAlpha(0.35)
+
+	function button:Sync()
+		local linked = ns.IsWidthLinked(pair)
+		local art = ns.Media(linked and "LinkOn" or "LinkOff")
+		local color = linked and LINKED_COLOR or UNLINKED_COLOR
+		icon:SetTexture(art)
+		glow:SetTexture(art)
+		icon:SetVertexColor(color[1], color[2], color[3])
+	end
+
+	button:SetScript("OnClick", function(self)
+		ns.SetWidthLinked(pair, not ns.IsWidthLinked(pair))
+		PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+		if parent.OnLinkChanged then
+			parent:OnLinkChanged()
+		end
+		self:GetScript("OnEnter")(self)
+	end)
+	button:SetScript("OnEnter", function(self)
+		if ns.IsWidthLinked(pair) then
+			ShowTooltip(self, "Widths linked", string.format(
+				"The %s and %s share one width. Changing either one on its own tab unlinks them. Click to unlink.",
+				names[1], names[2]))
+		else
+			ShowTooltip(self, "Widths unlinked", string.format(
+				"The %s and %s each have their own width. Click to link them again: the %s takes the %s's width.",
+				names[1], names[2], names[2], names[1]))
+		end
+	end)
+	button:SetScript("OnLeave", HideTooltip)
+	button:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
+	button:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)
+	return button
+end
+
+-- A label, Blizzard's minimal slider with step arrows, and a box for typing an exact value. With a link,
+-- a chain button sits at the top right, beside the label.
+local function CreateSliderRow(parent, text, range, format, getValue, setValue, link)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetSize(COLUMN_WIDTH, 48)
 
@@ -175,6 +270,11 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 	slider:SetHeight(20)
 	slider:Init(getValue(), range.min, range.max, math.floor((range.max - range.min) / range.step + 0.5))
 
+	if link then
+		row.link = CreateLinkButton(row, link.pair, link.names)
+		row.link:SetPoint("TOPRIGHT", 0, 0)
+	end
+
 	-- The slider can only rest on its steps, while a typed value can be exact. So moving the
 	-- slider from code mustn't feed its snapped value back in as a new setting.
 	local isSyncing = false
@@ -185,11 +285,22 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 		isSyncing = false
 		input:SetText(format(getValue()))
 		input:SetCursorPosition(0)
+		if row.link then
+			row.link:Sync()
+		end
+	end
+
+	-- Changing a frame's own width can unlink it, which its chain shows straight away.
+	local function Changed(value)
+		setValue(value)
+		if row.link then
+			row.link:Sync()
+		end
 	end
 
 	slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
 		if not isSyncing then
-			setValue(value)
+			Changed(value)
 			input:SetText(format(getValue()))
 		end
 	end, row)
@@ -197,7 +308,7 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 	input:SetScript("OnEnterPressed", function(self)
 		local value = tonumber((self:GetText():gsub("%%", "")))
 		if value then
-			setValue(value)
+			Changed(value)
 		end
 		self:ClearFocus()
 		row:Sync()
@@ -210,13 +321,21 @@ local function CreateSliderRow(parent, text, range, format, getValue, setValue)
 		self:ClearFocus()
 	end)
 
-	function row:SetEnabled(enabled)
+	-- The value and the link can be locked separately: a General width is greyed while unlinked, but its
+	-- link still works.
+	function row:SetEnabled(enabled, linkEnabled)
 		if not enabled then
 			input:ClearFocus()
 		end
 		slider:SetEnabled(enabled)
 		input:SetEnabled(enabled)
 		label:SetFontObject(enabled and "GameFontHighlight" or "GameFontDisable")
+		if self.link then
+			if linkEnabled == nil then
+				linkEnabled = enabled
+			end
+			self.link:SetEnabled(linkEnabled)
+		end
 	end
 
 	return row
@@ -230,6 +349,7 @@ local function CreateDropdownRow(parent, text, rowWidth, dropdownWidth)
 
 	local label = CreateLabel(row, "GameFontHighlight", text)
 	label:SetPoint("LEFT")
+	row.label = label
 
 	local dropdown = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
 	dropdown:SetWidth(dropdownWidth or DROPDOWN_WIDTH)
@@ -240,23 +360,74 @@ local function CreateDropdownRow(parent, text, rowWidth, dropdownWidth)
 		local room = width - label:GetStringWidth() - 16
 		dropdown:SetWidth(math.max(math.min(dropdownWidth or DROPDOWN_WIDTH, room), DROPDOWN_MIN_WIDTH))
 	end
+
+	function row:SetEnabled(enabled)
+		dropdown:SetEnabled(enabled)
+		label:SetFontObject(enabled and "GameFontHighlight" or "GameFontDisable")
+	end
 	return row
 end
 
 -- The newer grey and gold buttons from Blizzard's recent panels, in place of the old red ones.
+-- The hover art replaces the normal art rather than being a highlight texture: highlight textures draw in
+-- the HIGHLIGHT layer, above the button's text, and this art is opaque, so the text vanished on hover.
+local BUTTON_ART = {
+	normal = "common-button-tertiary-normal",
+	hover = "common-button-tertiary-hover",
+}
+
 local function CreateButton(parent, text, width)
 	local button = CreateFrame("Button", nil, parent)
 	button:SetSize(width, 24)
-	button:SetNormalAtlas("common-button-tertiary-normal")
+	button:SetNormalAtlas(BUTTON_ART.normal)
 	button:SetPushedAtlas("common-button-tertiary-pressed")
 	button:SetDisabledAtlas("common-button-tertiary-disabled")
-	button:SetHighlightAtlas("common-button-tertiary-hover", "BLEND")
 	button:SetNormalFontObject(GameFontNormal)
 	button:SetHighlightFontObject(GameFontHighlight)
 	button:SetDisabledFontObject(GameFontDisable)
 	button:SetPushedTextOffset(0, -1)
 	button:SetText(text)
+	button:HookScript("OnEnter", function(self)
+		if self:IsEnabled() then
+			self:GetNormalTexture():SetAtlas(BUTTON_ART.hover)
+		end
+	end)
+	button:HookScript("OnLeave", function(self)
+		self:GetNormalTexture():SetAtlas(BUTTON_ART.normal)
+	end)
+	button:HookScript("OnDisable", function(self)
+		self:GetNormalTexture():SetAtlas(BUTTON_ART.normal)
+	end)
 	return button
+end
+
+-- A color swatch the size of the game's own, shown faded while the color is the default.
+local function CreateSwatch(parent)
+	local swatch = CreateFrame("Button", nil, parent, "ColorSwatchTemplate")
+	-- The template passes clicks on to its parent, which would flip a switch on the row as well.
+	swatch:SetPropagateMouseClicks(false)
+	swatch:SetSize(22, 22)
+	swatch.SwatchBg:SetSize(20, 20)
+	swatch.InnerBorder:SetSize(18, 18)
+	swatch.Color:SetSize(16, 16)
+
+	function swatch:SetSwatchColor(r, g, b, isDefault)
+		self:SetColorRGB(r, g, b)
+		self:SetAlpha(isDefault and 0.5 or 1)
+	end
+	return swatch
+end
+
+-- Opens the game's color picker on a color. onPick gets each color as it's dragged, and the starting one
+-- again if the picker is cancelled.
+local function PickColor(r, g, b, onPick, onCancel)
+	ColorPickerFrame:SetupColorPickerAndShow({
+		r = r, g = g, b = b,
+		swatchFunc = function()
+			onPick({ ColorPickerFrame:GetColorRGB() })
+		end,
+		cancelFunc = onCancel,
+	})
 end
 
 -- Each font shows in its own typeface in the dropdown. Menus don't allow SetFont on their text,
@@ -276,7 +447,45 @@ local function GetPreviewFont(path)
 end
 
 local function SameFont(a, b)
-	return a:upper() == b:upper()
+	return a ~= nil and b ~= nil and a:upper() == b:upper()
+end
+
+-- Fills a dropdown with every font, each in its own typeface. With nilLabel, the first choice is "no font
+-- of its own" (such as following the master font), which get returns as nil. A saved font that can't be
+-- loaded any more shows as that first choice, which is what it falls back to.
+local function SetUpFontMenu(dropdown, get, set, nilLabel)
+	dropdown:SetupMenu(function(_, root)
+		root:SetScrollMode(360)
+		if nilLabel then
+			root:CreateRadio(nilLabel, function() return get() == nil end, function() set(nil) end, false)
+		end
+		for _, font in ipairs(ns.GetFonts()) do
+			local radio = root:CreateRadio(font.name,
+				function() return SameFont(get(), font.path) end,
+				function() set(font.path) end, font)
+			radio:AddInitializer(function(button)
+				button.fontString:SetFontObject(GetPreviewFont(font.path))
+			end)
+		end
+	end)
+	dropdown:SetSelectionTranslator(function(selection)
+		return selection.data and selection.data.name or nilLabel
+	end)
+	-- Only fonts that load are listed, so nothing is picked when the saved one can't load: it shows what
+	-- the text falls back to instead. The master font falls back to the game's.
+	dropdown:SetDefaultText(nilLabel or "Friz Quadrata")
+end
+
+-- A dropdown of { key, label } choices. onPicked runs after the setting changes.
+local function SetUpChoiceMenu(dropdown, list, get, set)
+	dropdown:SetupMenu(function(_, root)
+		for _, item in ipairs(list) do
+			root:CreateRadio(item.label, function() return get() == item.key end, function() set(item.key) end, item)
+		end
+	end)
+	dropdown:SetSelectionTranslator(function(selection)
+		return selection.data.label
+	end)
 end
 
 -- Layout ------------------------------------------------------------------------------------------
@@ -284,12 +493,17 @@ end
 -- A section of a page: a heading and the rows under it, stacked. Hidden rows are left out and the rest
 -- close up, so a section can change with what's picked. Rows take the section's width unless they
 -- keep their own, like buttons.
+-- Without a title the rows start at the top, for a section right under a page heading.
 local function CreateCard(parent, title)
 	local card = CreateFrame("Frame", nil, parent)
 	card:SetSize(COLUMN_WIDTH, SECTION_HEIGHT)
-	local heading = CreateSection(card, title)
-	heading:SetPoint("TOPLEFT")
-	heading:SetPoint("TOPRIGHT")
+	card.top = 0
+	if title then
+		local heading = CreateSection(card, title)
+		heading:SetPoint("TOPLEFT")
+		heading:SetPoint("TOPRIGHT")
+		card.top = SECTION_HEIGHT + 2
+	end
 	card.entries = {}
 
 	-- gap is the space above the row.
@@ -310,7 +524,7 @@ end
 -- Stacks a section's shown rows at this width. Returns its height.
 local function LayoutCard(card, width)
 	card:SetWidth(width)
-	local y = SECTION_HEIGHT + 2
+	local y = card.top
 	for _, entry in ipairs(card.entries) do
 		local region = entry.region
 		if region:IsShown() then
@@ -366,8 +580,59 @@ local function LayoutCards(cards, parent, x, y, width)
 	return y + deepest
 end
 
+-- A larger gold heading across the page, over a group of sections such as one frame's texts.
+local function CreatePageHeader(parent, text)
+	local header = CreateFrame("Frame", nil, parent)
+	header:SetHeight(HEADER_HEIGHT)
+	local label = CreateLabel(header, "GameFontNormalLarge", text)
+	label:SetPoint("TOPLEFT", 0, -2)
+	local divider = header:CreateTexture(nil, "ARTWORK")
+	divider:SetAtlas("Options_HorizontalDivider")
+	divider:SetHeight(1)
+	divider:SetPoint("BOTTOMLEFT", 0, 6)
+	divider:SetPoint("BOTTOMRIGHT", 0, 6)
+	header.isHeader = true
+	return header
+end
+
+-- A page's contents, top to bottom: headings across the page, sections flowing into columns, and wide
+-- sections (marked span) that sit on their own row, like a text picker. Returns the layout function.
+local function CreateFlow(content, items)
+	return function(pageWidth)
+		local x, y = PAGE_PADDING, PAGE_PADDING
+		local pending = {}
+		local function Flush()
+			if #pending > 0 then
+				y = LayoutCards(pending, content, x, y, pageWidth) + SECTION_GAP
+				pending = {}
+			end
+		end
+		for i, item in ipairs(items) do
+			if item.isHeader then
+				Flush()
+				if i > 1 then
+					y = y + HEADER_GAP - SECTION_GAP
+				end
+				item:ClearAllPoints()
+				item:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
+				item:SetWidth(pageWidth)
+				y = y + HEADER_HEIGHT
+			elseif item.span then
+				Flush()
+				if item:IsShown() then
+					y = y + PlaceCard(item, content, x, y, math.min(pageWidth, item.span)) + SECTION_GAP
+				end
+			else
+				pending[#pending + 1] = item
+			end
+		end
+		Flush()
+		return y - SECTION_GAP
+	end
+end
+
 -- A tab's page: its content scrolls with the mouse wheel or the scroll bar at the right, and is laid
--- out again whenever the window changes size or a tab shows or hides some of its rows.
+-- out again whenever the window changes size or a page shows or hides some of its rows.
 local function CreateScrollPage(parent)
 	local page = CreateFrame("Frame", nil, parent)
 	page:SetAllPoints()
@@ -398,33 +663,239 @@ local function CreateScrollPage(parent)
 	end
 
 	scroll:SetScript("OnSizeChanged", function() page:Relayout() end)
-	page:SetScript("OnShow", function() page:Relayout() end)
+	-- A page shows the current settings whenever it's opened, since another page may share some of them.
+	page:SetScript("OnShow", function()
+		if page.options then
+			page.options.Sync()
+		end
+		page:Relayout()
+	end)
 	return page
 end
 
+-- Text editor -------------------------------------------------------------------------------------
 
--- Frames, size, position and opacity. Size and position move secure frames, so they're locked in combat.
+-- The text picker is no wider than this, so its dropdown sits near its label.
+local PICKER_WIDTH = 440
+
+-- One of a frame's text spots at a time, picked from a dropdown: whether it shows, what it shows, and
+-- how it looks. keys are the spots it offers, in the order of ns.TextGroups. None of it is protected,
+-- so it all works in combat. Returns the sections, the picker first and marked to span its own row,
+-- and a refresh for them.
+local function CreateTextEditor(content, keys, relayout)
+	local fields, offered, groupsSeen = {}, {}, {}
+	for _, key in ipairs(keys) do
+		offered[key] = true
+	end
+	for _, group in ipairs(ns.TextGroups) do
+		for _, field in ipairs(group.fields) do
+			if offered[field.key] then
+				fields[#fields + 1] = field
+				groupsSeen[group.label] = true
+			end
+		end
+	end
+	-- Name the group as well when the spots come from more than one, such as the target bar and its power bar.
+	local groupCount = 0
+	for _ in pairs(groupsSeen) do
+		groupCount = groupCount + 1
+	end
+	local function FieldLabel(field)
+		return groupCount > 1 and (field.group .. ": " .. field.label) or field.label
+	end
+
+	local selected = fields[1]
+	local refresh
+
+	local function Set(part, value)
+		ns.SetTextStyle(selected.key, part, value)
+	end
+
+	-- The picker sits right under the page heading that names these texts, so it has no heading of its own.
+	local pickCard = CreateCard(content)
+	pickCard.span = PICKER_WIDTH
+	local fieldRow = pickCard:Add(CreateDropdownRow(pickCard, "Text to edit", nil, 260))
+	-- When a spot only shows some of the time, such as the druid mana, this says when.
+	local note = pickCard:Add(CreateHint(pickCard, ""), 4)
+	note:Hide()
+	local reset = pickCard:Add(CreateButton(pickCard, "Reset this text", 134), 6, true)
+	reset:SetScript("OnClick", function()
+		ns.ResetTextStyle(selected.key)
+		refresh()
+	end)
+
+	local displayCard = CreateCard(content, "Display")
+	local showRow = displayCard:Add(CreateToggleRow(displayCard, "Show", function(checked) Set("enabled", checked) end))
+	local mouseoverRow = displayCard:Add(CreateToggleRow(displayCard, "Only on mouseover", function(checked) Set("mouseover", checked) end))
+	local formatRow = displayCard:Add(CreateDropdownRow(displayCard, "Shows"))
+
+	local fontCard = CreateCard(content, "Font")
+	local fontRow = fontCard:Add(CreateDropdownRow(fontCard, "Font"))
+	local outlineRow = fontCard:Add(CreateDropdownRow(fontCard, "Outline"))
+	local size = fontCard:Add(CreateSliderRow(fontCard, "Size", ns.TextSizeRange, FormatSize,
+		function() return ns.GetTextOption(selected.key, "size") end,
+		function(value)
+			Set("size", math.min(math.max(math.floor(value + 0.5), ns.TextSizeRange.min), ns.TextSizeRange.max))
+		end))
+
+	-- Moves the spot from where it normally sits, in UI units. Positive Y is up.
+	local positionCard = CreateCard(content, "Position")
+	local function OffsetRow(text, part)
+		return positionCard:Add(CreateSliderRow(positionCard, text, ns.TextOffsetRange, FormatSize,
+			function() return ns.GetTextOption(selected.key, part) end,
+			function(value)
+				Set(part, math.min(math.max(math.floor(value + 0.5), ns.TextOffsetRange.min), ns.TextOffsetRange.max))
+			end))
+	end
+	local offsetX = OffsetRow("X offset", "offsetX")
+	local offsetY = OffsetRow("Y offset", "offsetY")
+
+	local colorCard = CreateCard(content, "Color")
+	local colorRow = colorCard:Add(CreateToggleRow(colorCard, "Custom color", function(checked)
+		Set("color", checked and { ns.GetTextDefaultColor(selected.key) } or nil)
+		refresh()
+	end))
+	local swatch = CreateSwatch(colorRow)
+	swatch:SetPoint("RIGHT", colorRow.toggle, "LEFT", -12, 0)
+	local hint = colorCard:Add(CreateHint(colorCard, ""))
+
+	swatch:SetScript("OnClick", function()
+		local key = selected.key
+		local previous = ns.GetTextOption(key, "color")
+		local r, g, b = ns.GetTextDefaultColor(key)
+		if previous then
+			r, g, b = previous[1], previous[2], previous[3]
+		end
+		PickColor(r, g, b, function(color)
+			ns.SetTextStyle(key, "color", color)
+			refresh()
+		end, function()
+			ns.SetTextStyle(key, "color", previous)
+			refresh()
+		end)
+	end)
+
+	function refresh()
+		local key = selected.key
+		fieldRow.dropdown:GenerateMenu()
+		note:SetText(selected.note or "")
+		if note:IsShown() ~= (selected.note ~= nil) then
+			note:SetShown(selected.note ~= nil)
+			relayout()
+		end
+		showRow.toggle:SetChecked(ns.GetTextOption(key, "enabled"))
+		mouseoverRow.toggle:SetChecked(ns.GetTextOption(key, "mouseover"))
+		-- A spot without values always shows the same thing, which the dropdown names while switched off.
+		formatRow.dropdown:SetDefaultText(selected.shows or "")
+		formatRow.dropdown:GenerateMenu()
+		formatRow.dropdown:SetEnabled(selected.values ~= nil)
+		fontRow.dropdown:GenerateMenu()
+		outlineRow.dropdown:GenerateMenu()
+		size:Sync()
+		offsetX:Sync()
+		offsetY:Sync()
+		local color = ns.GetTextOption(key, "color")
+		colorRow.toggle:SetChecked(color ~= nil)
+		local r, g, b = ns.GetTextDefaultColor(key)
+		if color then
+			r, g, b = color[1], color[2], color[3]
+		end
+		swatch:SetSwatchColor(r, g, b, color == nil)
+		hint:SetText("Default color: " .. selected.defaultColor)
+	end
+
+	fieldRow.dropdown:SetupMenu(function(_, root)
+		root:SetScrollMode(480)
+		for _, field in ipairs(fields) do
+			root:CreateRadio(FieldLabel(field),
+				function() return selected == field end,
+				function()
+					selected = field
+					refresh()
+				end, field)
+		end
+	end)
+	fieldRow.dropdown:SetSelectionTranslator(function(selection)
+		return FieldLabel(selection.data)
+	end)
+
+	-- Each format lists an example beside its name, and the dropdown shows just the name once picked.
+	formatRow.dropdown:SetupMenu(function(_, root)
+		if not selected.values then
+			return
+		end
+		for _, format in ipairs(ns.ValueFormats) do
+			root:CreateRadio(format.label .. "  |cff9d9d9d" .. format.example .. "|r",
+				function() return ns.GetTextOption(selected.key, "format") == format.key end,
+				function()
+					Set("format", format.key)
+					refresh()
+				end, format)
+		end
+	end)
+	formatRow.dropdown:SetSelectionTranslator(function(selection)
+		return selection.data.label
+	end)
+
+	SetUpFontMenu(fontRow.dropdown,
+		function() return ns.GetTextOption(selected.key, "font") end,
+		function(font)
+			Set("font", font)
+			refresh()
+		end, "Master font")
+
+	SetUpChoiceMenu(outlineRow.dropdown, ns.Outlines,
+		function() return ns.GetTextOption(selected.key, "outline") end,
+		function(outline)
+			Set("outline", outline)
+			refresh()
+		end)
+
+	return { pickCard, displayCard, fontCard, positionCard, colorCard }, refresh, pickCard
+end
+
+-- Pages -------------------------------------------------------------------------------------------
+
+-- Look and feel, size, position and opacity. Size and position move secure frames, so they're locked in combat.
 local function BuildGeneral(content)
-	local framesCard = CreateCard(content, "Frames")
-	local showToT = framesCard:Add(CreateToggleRow(framesCard, "Show target of target", ns.SetTargetOfTargetShown))
-	local surnames = framesCard:Add(CreateToggleRow(framesCard, "Show last names", ns.SetSurnamesShown))
-	local prediction = framesCard:Add(CreateToggleRow(framesCard, "Show incoming heals and absorbs", ns.SetHealPredictionShown))
-	local pvpIcon = framesCard:Add(CreateToggleRow(framesCard, "Show PvP icon and timer", ns.SetPvPIconShown))
+	local lookCard = CreateCard(content, "Look & feel")
+	local showToT = lookCard:Add(CreateToggleRow(lookCard, "Show target of target", ns.SetTargetOfTargetShown))
+	local surnames = lookCard:Add(CreateToggleRow(lookCard, "Show last names", ns.SetSurnamesShown))
+	local prediction = lookCard:Add(CreateToggleRow(lookCard, "Show incoming heals and absorbs", ns.SetHealPredictionShown))
+	local pvpIcon = lookCard:Add(CreateToggleRow(lookCard, "Show PvP timer", ns.SetPvPIconShown))
+	local masterRow = lookCard:Add(CreateDropdownRow(lookCard, "Master font"), 6)
+	local applyFont = lookCard:Add(CreateButton(lookCard, "Use for all text", 150), 4, true)
+	local fontHint = lookCard:Add(CreateHint(lookCard,
+		"Texts with a font of their own keep it until you press Use for all text. That includes buff texts and combat text."), 6)
 
-	local sizeCard = CreateCard(content, "Scale and width")
+	SetUpFontMenu(masterRow.dropdown,
+		function() return ns.GetMasterFont() end,
+		function(font)
+			ns.SetMasterFont(font)
+			masterRow.dropdown:GenerateMenu()
+		end)
+	applyFont:SetScript("OnClick", ns.ApplyMasterFontToAll)
+
+	local sizeCard = CreateCard(content, "Size and position")
 	local scale = sizeCard:Add(CreateSliderRow(sizeCard, "Scale", ns.ScaleRange, FormatScale,
 		function() return ns.db.scale end, ns.SetScale))
 	local width = sizeCard:Add(CreateSliderRow(sizeCard, "Width", ns.WidthRange, FormatScale,
-		function() return ns.db.width end, ns.SetWidth))
-	local petWidth = sizeCard:Add(CreateSliderRow(sizeCard, "Pet and target of target width", ns.WidthRange, FormatScale,
-		function() return ns.db.petWidth end, ns.SetPetWidth))
+		function() return ns.GetFrameWidth("player") end,
+		function(value) ns.SetPairWidth("main", value) end,
+		{ pair = "main", names = { "player bar", "target bar" } }))
+	local outerWidth = sizeCard:Add(CreateSliderRow(sizeCard, "Pet and target of target width", ns.WidthRange, FormatScale,
+		function() return ns.GetFrameWidth("pet") end,
+		function(value) ns.SetPairWidth("outer", value) end,
+		{ pair = "outer", names = { "pet bar", "target of target bar" } }))
+	local widthHint = sizeCard:Add(CreateHint(sizeCard, ""), 2)
 
-	local positionCard = CreateCard(content, "Position")
-	local center = positionCard:Add(CreateButton(positionCard, "Center horizontally", 150), 6, true)
+	local unlockHint = sizeCard:Add(CreateHint(sizeCard,
+		"Press Unlock frames at the top of this window to drag the frames, buffs and combat text around."), 12)
+	local center = sizeCard:Add(CreateButton(sizeCard, "Center horizontally", 150), 8, true)
 	center:SetScript("OnClick", ns.CenterHorizontally)
 
 	-- Up above Down, with Left and Right either side of Down.
-	local pad = positionCard:Add(CreateFrame("Frame", nil, positionCard), 8, true)
+	local pad = sizeCard:Add(CreateFrame("Frame", nil, sizeCard), 8, true)
 	pad:SetSize(160, 50)
 
 	local up = CreateButton(pad, "Up", 52)
@@ -446,30 +917,10 @@ local function BuildGeneral(content)
 	-- None of the opacity settings are protected, so they stay usable in combat.
 	local opacityCard = CreateCard(content, "Opacity")
 	local modeRow = opacityCard:Add(CreateDropdownRow(opacityCard, "Mode"))
-	local modeHint = opacityCard:Add(CreateLabel(opacityCard, "GameFontDisableSmall", ""))
-	modeHint:SetWordWrap(true)
+	local modeHint = opacityCard:Add(CreateHint(opacityCard, ""))
 	local manual = opacityCard:Add(CreateSliderRow(opacityCard, "Manual opacity", { min = 0, max = 100, step = 5 }, FormatPercent,
 		function() return math.floor(ns.db.manualOpacity * 100 + 0.5) end,
 		function(value) ns.SetManualOpacity(value / 100) end), 4)
-
-	-- Where the spell name and time go. Their font, size and color are with the other text.
-	local castCard = CreateCard(content, "Cast")
-	local placementRow = castCard:Add(CreateDropdownRow(castCard, "Spell name and time"))
-	local castHint = castCard:Add(CreateLabel(castCard, "GameFontDisableSmall",
-		"Their font, size and color are in the Text tab, as Cast: Spell name and Cast: Time."))
-	castHint:SetWordWrap(true)
-
-	local CAST_PLACEMENTS = {
-		{ key = "below", label = "Below the orb" },
-		{ key = "above", label = "Above the orb" },
-	}
-	placementRow.dropdown:SetupMenu(function(_, root)
-		for _, placement in ipairs(CAST_PLACEMENTS) do
-			root:CreateRadio(placement.label,
-				function() return ns.db.castTextPlacement == placement.key end,
-				function() ns.SetCastTextPlacement(placement.key) end, placement)
-		end
-	end)
 
 	local function SyncOpacity()
 		modeRow.dropdown:GenerateMenu()
@@ -478,248 +929,679 @@ local function BuildGeneral(content)
 		manual:SetEnabled(ns.db.opacityMode == "manual")
 	end
 
-	modeRow.dropdown:SetupMenu(function(_, root)
-		for _, mode in ipairs(ns.OpacityModes) do
-			root:CreateRadio(mode.label,
-				function() return ns.db.opacityMode == mode.key end,
-				function()
-					ns.SetOpacityMode(mode.key)
-					SyncOpacity()
-				end, mode)
-		end
-	end)
+	SetUpChoiceMenu(modeRow.dropdown, ns.OpacityModes,
+		function() return ns.db.opacityMode end,
+		function(mode)
+			ns.SetOpacityMode(mode)
+			SyncOpacity()
+		end)
 
+	local isLocked = false
 	local options = {}
+
+	-- While a pair is unlinked, its width here is greyed: each frame's own tab sets it. The link still works.
+	local function SyncWidthLocks()
+		local mainLinked, outerLinked = ns.IsWidthLinked("main"), ns.IsWidthLinked("outer")
+		width:SetEnabled(not isLocked and mainLinked, not isLocked)
+		outerWidth:SetEnabled(not isLocked and outerLinked, not isLocked)
+		local text = ""
+		if not mainLinked and not outerLinked then
+			text = "Unlinked: each bar's width is set on the Player & Pet and Target tabs."
+		elseif not mainLinked then
+			text = "Unlinked: the player and target bar widths are set on the Player & Pet and Target tabs."
+		elseif not outerLinked then
+			text = "Unlinked: the pet and target of target widths are set on the Player & Pet and Target tabs."
+		end
+		if widthHint:GetText() ~= text then
+			widthHint:SetText(text)
+			widthHint:SetShown(text ~= "")
+			if options.relayout then
+				options.relayout()
+			end
+		end
+	end
+	widthHint:Hide()
+	width.OnLinkChanged = function() width:Sync() SyncWidthLocks() end
+	outerWidth.OnLinkChanged = function() outerWidth:Sync() SyncWidthLocks() end
 
 	function options.Sync()
 		showToT.toggle:SetChecked(ns.db.showTargetOfTarget)
 		surnames.toggle:SetChecked(ns.db.showSurnames)
 		prediction.toggle:SetChecked(ns.db.showHealPrediction)
 		pvpIcon.toggle:SetChecked(ns.db.showPvPIcon)
+		masterRow.dropdown:GenerateMenu()
 		SyncOpacity()
-		placementRow.dropdown:GenerateMenu()
 		scale:Sync()
 		width:Sync()
-		petWidth:Sync()
+		outerWidth:Sync()
+		SyncWidthLocks()
 	end
 
 	function options.SetCombatLocked(locked)
-		for _, control in ipairs({ showToT, scale, width, petWidth, center, up, down, leftButton, rightButton }) do
+		isLocked = locked
+		for _, control in ipairs({ showToT, scale, center, up, down, leftButton, rightButton }) do
 			control:SetEnabled(not locked)
 		end
+		SyncWidthLocks()
 	end
 
-	function options.Layout(pageWidth)
-		return LayoutCards({ framesCard, sizeCard, positionCard, opacityCard, castCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
-	end
-
+	options.Layout = CreateFlow(content, { lookCard, sizeCard, opacityCard })
 	return options
 end
 
--- The text picker is no wider than this, so its dropdown sits near its label.
-local PICKER_WIDTH = 440
+-- A frame tab's Look & feel section: its own width, linked to the frame across the orb, the switch for
+-- the frame beyond it, and that frame's width. These move secure frames, so they're locked in combat.
+local function CreateFrameLookCard(content, spec)
+	local card = CreateCard(content, "Look & feel")
+	local width = card:Add(CreateSliderRow(card, spec.widthLabel, ns.WidthRange, FormatScale,
+		function() return ns.GetFrameWidth(spec.frame) end,
+		function(value) ns.SetFrameWidth(spec.frame, value) end,
+		{ pair = "main", names = { "player bar", "target bar" } }))
+	local shown = card:Add(CreateToggleRow(card, spec.toggleLabel, spec.setShown))
+	local outerWidth = card:Add(CreateSliderRow(card, spec.outerLabel, ns.WidthRange, FormatScale,
+		function() return ns.GetFrameWidth(spec.outerFrame) end,
+		function(value) ns.SetFrameWidth(spec.outerFrame, value) end,
+		{ pair = "outer", names = { "pet bar", "target of target bar" } }))
+	width.OnLinkChanged = function() width:Sync() end
+	outerWidth.OnLinkChanged = function() outerWidth:Sync() end
 
--- One text spot at a time, picked from a dropdown: whether it shows, what it shows, and how it looks.
--- None of it is protected, so it all works in combat.
-local function BuildTextOptions(content, _, relayout)
-	local selected = ns.TextGroups[1].fields[1]
-	local refresh
-
-	local pickCard = CreateCard(content, "Text")
-	local fieldRow = pickCard:Add(CreateDropdownRow(pickCard, "Text to edit", nil, 260))
-	-- When a spot only shows some of the time, such as the druid mana, this says when.
-	local note = pickCard:Add(CreateLabel(pickCard, "GameFontDisableSmall", ""), 4)
-	note:SetWordWrap(true)
-	note:Hide()
-	local reset = pickCard:Add(CreateButton(pickCard, "Reset this text", 134), 6, true)
-	reset:SetScript("OnClick", function()
-		ns.ResetTextStyle(selected.key)
-		refresh()
-	end)
-
-	local displayCard = CreateCard(content, "Display")
-	local showRow = displayCard:Add(CreateToggleRow(displayCard, "Show", function(checked)
-		ns.SetTextStyle(selected.key, "enabled", checked)
-	end))
-	local mouseoverRow = displayCard:Add(CreateToggleRow(displayCard, "Only on mouseover", function(checked)
-		ns.SetTextStyle(selected.key, "mouseover", checked)
-	end))
-	local formatRow = displayCard:Add(CreateDropdownRow(displayCard, "Shows"))
-
-	local fontCard = CreateCard(content, "Font and size")
-	local fontRow = fontCard:Add(CreateDropdownRow(fontCard, "Font"))
-	local size = fontCard:Add(CreateSliderRow(fontCard, "Size", ns.TextSizeRange, FormatSize,
-		function() return ns.GetTextOption(selected.key, "size") end,
-		function(value)
-			value = math.min(math.max(math.floor(value + 0.5), ns.TextSizeRange.min), ns.TextSizeRange.max)
-			ns.SetTextStyle(selected.key, "size", value)
-		end))
-	local fontToAll = fontCard:Add(CreateButton(fontCard, "Use font for all text", 150), 6, true)
-	fontToAll:SetScript("OnClick", function()
-		local font = ns.GetTextOption(selected.key, "font")
-		for key in pairs(ns.TextFields) do
-			ns.SetTextStyle(key, "font", font)
-		end
-		refresh()
-	end)
-
-	-- Moves the spot from where it normally sits, in UI units. Positive Y is up.
-	local positionCard = CreateCard(content, "Position")
-	local function CreateOffsetRow(text, part)
-		return positionCard:Add(CreateSliderRow(positionCard, text, ns.TextOffsetRange, FormatSize,
-			function() return ns.GetTextOption(selected.key, part) end,
-			function(value)
-				value = math.min(math.max(math.floor(value + 0.5), ns.TextOffsetRange.min), ns.TextOffsetRange.max)
-				ns.SetTextStyle(selected.key, part, value)
-			end))
-	end
-	local offsetX = CreateOffsetRow("X offset", "offsetX")
-	local offsetY = CreateOffsetRow("Y offset", "offsetY")
-
-	local colorCard = CreateCard(content, "Color")
-	local colorRow = colorCard:Add(CreateToggleRow(colorCard, "Custom color", function(checked)
-		if checked then
-			ns.SetTextStyle(selected.key, "color", { ns.GetTextDefaultColor(selected.key) })
-		else
-			ns.SetTextStyle(selected.key, "color", nil)
-		end
-		refresh()
-	end))
-
-	-- The template passes clicks on to its parent, which would flip the switch as well.
-	local swatch = CreateFrame("Button", nil, colorRow, "ColorSwatchTemplate")
-	swatch:SetPropagateMouseClicks(false)
-	swatch:SetSize(22, 22)
-	swatch.SwatchBg:SetSize(20, 20)
-	swatch.InnerBorder:SetSize(18, 18)
-	swatch.Color:SetSize(16, 16)
-	swatch:SetPoint("RIGHT", colorRow.toggle, "LEFT", -12, 0)
-
-	local hint = colorCard:Add(CreateLabel(colorCard, "GameFontDisableSmall", ""))
-	hint:SetWordWrap(true)
-
-	local function OpenColorPicker()
-		local key = selected.key
-		local previous = ns.GetTextOption(key, "color")
-		local r, g, b = ns.GetTextDefaultColor(key)
-		if previous then
-			r, g, b = previous[1], previous[2], previous[3]
-		end
-		ColorPickerFrame:SetupColorPickerAndShow({
-			r = r, g = g, b = b,
-			swatchFunc = function()
-				ns.SetTextStyle(key, "color", { ColorPickerFrame:GetColorRGB() })
-				refresh()
-			end,
-			cancelFunc = function()
-				ns.SetTextStyle(key, "color", previous)
-				refresh()
-			end,
-		})
-	end
-	swatch:SetScript("OnClick", OpenColorPicker)
-
-	function refresh()
-		local key = selected.key
-		fieldRow.dropdown:GenerateMenu()
-		note:SetText(selected.note or "")
-		if note:IsShown() ~= (selected.note ~= nil) then
-			note:SetShown(selected.note ~= nil)
-			relayout()
-		end
-		showRow.toggle:SetChecked(ns.GetTextOption(key, "enabled"))
-		mouseoverRow.toggle:SetChecked(ns.GetTextOption(key, "mouseover"))
-		-- A spot without values always shows the same thing, which the dropdown names while switched off.
-		formatRow.dropdown:SetDefaultText(selected.shows or "")
-		formatRow.dropdown:GenerateMenu()
-		formatRow.dropdown:SetEnabled(selected.values ~= nil)
-		fontRow.dropdown:GenerateMenu()
-		size:Sync()
-		offsetX:Sync()
-		offsetY:Sync()
-		local color = ns.GetTextOption(key, "color")
-		colorRow.toggle:SetChecked(color ~= nil)
-		local r, g, b = ns.GetTextDefaultColor(key)
-		if color then
-			r, g, b = color[1], color[2], color[3]
-		end
-		swatch:SetColorRGB(r, g, b)
-		swatch:SetAlpha(color and 1 or 0.5)
-		hint:SetText("Default color: " .. selected.defaultColor)
+	function card:Sync()
+		width:Sync()
+		outerWidth:Sync()
+		shown.toggle:SetChecked(spec.isShown())
 	end
 
-	fieldRow.dropdown:SetupMenu(function(_, root)
-		root:SetScrollMode(480)
-		for _, group in ipairs(ns.TextGroups) do
-			root:CreateTitle(group.label)
-			for _, field in ipairs(group.fields) do
-				root:CreateRadio(field.label,
-					function() return selected == field end,
-					function()
-						selected = field
-						refresh()
-					end, field)
-			end
-		end
-	end)
-	fieldRow.dropdown:SetSelectionTranslator(function(selection)
-		return selection.data.group .. ": " .. selection.data.label
-	end)
-
-	-- Each format lists an example beside its name, and the dropdown shows just the name once picked.
-	formatRow.dropdown:SetupMenu(function(_, root)
-		if not selected.values then
-			return
-		end
-		for _, format in ipairs(ns.ValueFormats) do
-			root:CreateRadio(format.label .. "  |cff9d9d9d" .. format.example .. "|r",
-				function() return ns.GetTextOption(selected.key, "format") == format.key end,
-				function()
-					ns.SetTextStyle(selected.key, "format", format.key)
-					refresh()
-				end, format)
-		end
-	end)
-	formatRow.dropdown:SetSelectionTranslator(function(selection)
-		return selection.data.label
-	end)
-
-	fontRow.dropdown:SetupMenu(function(_, root)
-		root:SetScrollMode(360)
-		for _, font in ipairs(ns.GetFonts()) do
-			local radio = root:CreateRadio(font.name,
-				function() return SameFont(ns.GetTextOption(selected.key, "font") or ns.Text.font, font.path) end,
-				function()
-					ns.SetTextStyle(selected.key, "font", not SameFont(font.path, ns.Text.font) and font.path or nil)
-					refresh()
-				end, font)
-			radio:AddInitializer(function(button)
-				button.fontString:SetFontObject(GetPreviewFont(font.path))
-			end)
-		end
-	end)
-	-- A saved font that can't be loaded any more shows as the default it falls back to.
-	fontRow.dropdown:SetDefaultText("Friz Quadrata")
-
-	-- The picker spans the top, and the rest flow under it.
-	local function Layout(pageWidth)
-		local top = PAGE_PADDING + PlaceCard(pickCard, content, PAGE_PADDING, PAGE_PADDING, math.min(pageWidth, PICKER_WIDTH))
-		return LayoutCards({ displayCard, fontCard, positionCard, colorCard }, content, PAGE_PADDING, top + SECTION_GAP, pageWidth)
+	function card:SetCombatLocked(locked)
+		width:SetEnabled(not locked)
+		outerWidth:SetEnabled(not locked)
+		shown:SetEnabled(not locked)
 	end
-
-	return { Sync = refresh, SetCombatLocked = function() end, Layout = Layout }
+	return card
 end
 
--- Sits above the tabs, since it applies to the whole addon rather than one tab.
-local function CreateTopToggle(frame, text, onChange)
-	local row = CreateToggleRow(frame, text, onChange)
-	row:SetWidth(row.label:GetStringWidth() + 12 + TOGGLE_WIDTH)
-	return row
+local function AppendAll(list, more)
+	for _, item in ipairs(more) do
+		list[#list + 1] = item
+	end
+end
+
+-- Collects the refreshes of a page's pieces into one Sync.
+local function Joined(...)
+	local functions = { ... }
+	return function()
+		for _, sync in ipairs(functions) do
+			sync()
+		end
+	end
+end
+
+local function BuildPlayer(content, _, relayout)
+	local lookCard = CreateFrameLookCard(content, {
+		frame = "player", widthLabel = "Player bar width",
+		toggleLabel = "Show pet frame", setShown = ns.SetPetShown, isShown = function() return ns.db.showPet end,
+		outerFrame = "pet", outerLabel = "Pet bar width",
+	})
+	local playerCards, playerRefresh = CreateTextEditor(content, { "playerName", "playerLeft", "playerRight", "pvpTimer" }, relayout)
+	local petCards, petRefresh = CreateTextEditor(content, { "petName", "petCenter" }, relayout)
+
+	local items = { lookCard, CreatePageHeader(content, "Player texts") }
+	AppendAll(items, playerCards)
+	items[#items + 1] = CreatePageHeader(content, "Pet texts")
+	AppendAll(items, petCards)
+
+	return {
+		Sync = Joined(function() lookCard:Sync() end, playerRefresh, petRefresh),
+		SetCombatLocked = function(locked) lookCard:SetCombatLocked(locked) end,
+		Layout = CreateFlow(content, items),
+	}
+end
+
+local function BuildTarget(content, _, relayout)
+	local lookCard = CreateFrameLookCard(content, {
+		frame = "target", widthLabel = "Target bar width",
+		toggleLabel = "Show target of target", setShown = ns.SetTargetOfTargetShown,
+		isShown = function() return ns.db.showTargetOfTarget end,
+		outerFrame = "tot", outerLabel = "Target of target width",
+	})
+	local targetCards, targetRefresh = CreateTextEditor(content, { "targetName", "targetLevel", "targetRight", "targetPowerRight" }, relayout)
+	local totCards, totRefresh = CreateTextEditor(content, { "totName", "totLevel" }, relayout)
+
+	local items = { lookCard, CreatePageHeader(content, "Target texts") }
+	AppendAll(items, targetCards)
+	items[#items + 1] = CreatePageHeader(content, "Target of target texts")
+	AppendAll(items, totCards)
+
+	return {
+		Sync = Joined(function() lookCard:Sync() end, targetRefresh, totRefresh),
+		SetCombatLocked = function(locked) lookCard:SetCombatLocked(locked) end,
+		Layout = CreateFlow(content, items),
+	}
+end
+
+local CAST_PLACEMENTS = {
+	{ key = "below", label = "Below the orb" },
+	{ key = "above", label = "Above the orb" },
+}
+
+-- The orb and the cast ring around it. None of it is protected, so it all works in combat.
+local function BuildOrb(content, _, relayout)
+	local orbCard = CreateCard(content) -- under the Power orb heading
+	local styleRow = orbCard:Add(CreateDropdownRow(orbCard, "Liquid"))
+	local styleHint = orbCard:Add(CreateHint(orbCard, ""))
+	local spark = orbCard:Add(CreateToggleRow(orbCard, "Show five second rule timer", ns.SetManaSparkShown), 4)
+	-- The druid mana is a text spot, so this is the same switch as that text's Show.
+	local druidMana = orbCard:Add(CreateToggleRow(orbCard, "Show druid mana in bear and cat form", function(checked)
+		ns.SetTextStyle("orbMana", "enabled", checked)
+	end))
+
+	local function SyncStyle()
+		styleRow.dropdown:GenerateMenu()
+		for _, style in ipairs(ns.OrbStyles) do
+			if style.key == ns.db.orbStyle then
+				styleHint:SetText(style.description)
+			end
+		end
+	end
+	SetUpChoiceMenu(styleRow.dropdown, ns.OrbStyles,
+		function() return ns.db.orbStyle end,
+		function(style)
+			ns.SetOrbStyle(style)
+			SyncStyle()
+		end)
+
+	local orbCards, orbRefresh = CreateTextEditor(content, { "orbCenter", "orbMana" }, relayout)
+
+	local castCard = CreateCard(content) -- under the Cast ring heading
+	local placementRow = castCard:Add(CreateDropdownRow(castCard, "Spell name and time"))
+	SetUpChoiceMenu(placementRow.dropdown, CAST_PLACEMENTS,
+		function() return ns.db.castTextPlacement end,
+		function(placement) ns.SetCastTextPlacement(placement) end)
+	local swing = castCard:Add(CreateToggleRow(castCard, "Show swing timer", ns.SetSwingTimerShown), 4)
+	-- PLACEHOLDER castLatency: "Show latency" - the part of the cast lost to latency, shaded at the ring's end.
+	castCard:Add(CreatePlaceholderRow(castCard, "Show latency", "castLatency"))
+	-- PLACEHOLDER castAnimated: "Animated ring" - animated textures on the cast ring.
+	castCard:Add(CreatePlaceholderRow(castCard, "Animated ring", "castAnimated"))
+	-- PLACEHOLDER castGCD: "Show global cooldown" - the global cooldown on the ring.
+	castCard:Add(CreatePlaceholderRow(castCard, "Show global cooldown", "castGCD"))
+
+	local castCards, castRefresh, castPick = CreateTextEditor(content, { "castName", "castTime" }, relayout)
+	-- The spell icon belongs with the cast's texts, beside the spell name.
+	local icon = castPick:Add(CreateToggleRow(castPick, "Show spell icon beside the name", ns.SetCastIconShown), 8)
+
+	local items = { CreatePageHeader(content, "Power orb"), orbCard, CreatePageHeader(content, "Orb text") }
+	AppendAll(items, orbCards)
+	items[#items + 1] = CreatePageHeader(content, "Cast ring")
+	items[#items + 1] = castCard
+	items[#items + 1] = CreatePageHeader(content, "Cast text")
+	AppendAll(items, castCards)
+
+	return {
+		Sync = Joined(function()
+			SyncStyle()
+			spark.toggle:SetChecked(ns.db.showManaSpark)
+			druidMana.toggle:SetChecked(ns.GetTextOption("orbMana", "enabled"))
+			placementRow.dropdown:GenerateMenu()
+			swing.toggle:SetChecked(ns.db.showSwingTimer)
+			icon.toggle:SetChecked(ns.db.showCastIcon)
+		end, orbRefresh, castRefresh),
+		SetCombatLocked = function() end,
+		Layout = CreateFlow(content, items),
+	}
+end
+
+local SIDEBAR_WIDTH = 170
+local AURA_DROPDOWN_WIDTH = 130
+local AURA_GROUP_HEIGHT = 30
+
+-- The groups down the left, each with its own switch, and the picked group's settings beside them.
+-- None of it is protected, so it all works in combat.
+local function BuildAuras(content)
+	local selected = ns.AuraGroups[1]
+	local refresh
+	local syncs = {}
+	local options = {}
+
+	local function Get(field)
+		return ns.GetAuraSettings(selected.key)[field]
+	end
+
+	local function Set(field, value)
+		ns.SetAuraOption(selected.key, field, value)
+	end
+
+	local function GetList(field)
+		return ns.GetAuraSettings(selected.key).list[field]
+	end
+
+	local function SetList(field, value)
+		ns.SetAuraListOption(selected.key, field, value)
+	end
+
+	-- Sidebar: the groups, then test mode
+	local groupsCard = CreateCard(content, "Groups")
+	local groupRows = {}
+	for i, group in ipairs(ns.AuraGroups) do
+		local row = groupsCard:Add(CreateFrame("Button", nil, groupsCard), i == 1 and 2 or 0)
+		row:SetSize(SIDEBAR_WIDTH, AURA_GROUP_HEIGHT)
+
+		local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+		highlight:SetAllPoints()
+		highlight:SetColorTexture(1, 1, 1, 0.08)
+
+		row.selected = row:CreateTexture(nil, "BACKGROUND")
+		row.selected:SetAllPoints()
+		row.selected:SetColorTexture(TOGGLE_ON[1], TOGGLE_ON[2], TOGGLE_ON[3], 0.15)
+
+		local label = CreateLabel(row, "GameFontHighlight", group.label)
+		label:SetPoint("LEFT", 8, 0)
+
+		row.toggle = CreateToggle(row, function(checked)
+			ns.SetAuraOption(group.key, "enabled", checked)
+		end)
+		row.toggle:SetPoint("RIGHT", -4, 0)
+
+		row:SetScript("OnClick", function()
+			selected = group
+			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+			refresh()
+		end)
+		groupRows[i] = { row = row, group = group }
+	end
+
+	local testCard = CreateCard(content, "Test mode")
+	local testRow = testCard:Add(CreateToggleRow(testCard, "Show test buffs", ns.SetAuraTestMode), 2)
+	testCard:Add(CreateHint(testCard,
+		"Fills every group with sample buffs, so you can see the layout as you change it. Target debuffs show while you have a target, and target buffs show either way. Turns off when you reload."), 2)
+	if ns.hasMasque then
+		testCard:Add(CreateHint(testCard,
+			"Masque is installed: pick a skin for these icons in Masque's settings (/masque)."), 10)
+	end
+
+	-- Each row's refresh, run only while the row is showing, so a row never reads a setting the picked
+	-- group doesn't have.
+	local function AddSync(row, sync)
+		syncs[#syncs + 1] = { row = row, sync = sync }
+	end
+
+	local function IsShowing(region)
+		while region and region ~= content do
+			if not region:IsShown() then
+				return false
+			end
+			region = region:GetParent()
+		end
+		return true
+	end
+
+	-- A slider reads its value as it's made, while the first group is picked, which may not have this
+	-- setting. Its row only shows for groups that do.
+	local function Slider(card, text, range, access)
+		local function get()
+			local value = access.get()
+			return value ~= nil and value or range.min
+		end
+		local row = card:Add(CreateSliderRow(card, text, range, FormatSize, get, access.set))
+		AddSync(row, row.Sync)
+		return row
+	end
+
+	local function Toggle(card, text, access)
+		local row = card:Add(CreateToggleRow(card, text, access.set))
+		AddSync(row, function() row.toggle:SetChecked(access.get()) end)
+		return row
+	end
+
+	local function Dropdown(card, text)
+		local row = card:Add(CreateDropdownRow(card, text, nil, AURA_DROPDOWN_WIDTH))
+		AddSync(row, function() row.dropdown:GenerateMenu() end)
+		return row
+	end
+
+	local function Choices(card, text, list, access)
+		local row = Dropdown(card, text)
+		SetUpChoiceMenu(row.dropdown, list, access.get, function(key)
+			access.set(key)
+			refresh()
+		end)
+		return row
+	end
+
+	-- Each font shows in its own typeface. nil follows the master font.
+	local function FontChoice(card, access)
+		local row = Dropdown(card, "Font")
+		SetUpFontMenu(row.dropdown, access.get, function(font)
+			access.set(font)
+			refresh()
+		end, "Master font")
+		return row
+	end
+
+	local function ColorChoice(card, access)
+		local row = card:Add(CreateFrame("Frame", nil, card))
+		row:SetSize(COLUMN_WIDTH, 30)
+		local label = CreateLabel(row, "GameFontHighlight", "Color")
+		label:SetPoint("LEFT")
+		local swatch = CreateSwatch(row)
+		swatch:SetPoint("RIGHT", -2, 0)
+		swatch:SetScript("OnClick", function()
+			local previous = access.get()
+			PickColor(previous[1], previous[2], previous[3], function(color)
+				access.set(color)
+				refresh()
+			end, function()
+				access.set(previous)
+				refresh()
+			end)
+		end)
+		AddSync(row, function()
+			local color = access.get()
+			swatch:SetSwatchColor(color[1], color[2], color[3])
+		end)
+		return row
+	end
+
+	-- A text's font, size, color and offsets from where it normally sits.
+	local function TextChoices(card, access, fields)
+		FontChoice(card, access(fields.font))
+		Slider(card, "Size", ns.AuraTextSizeRange, access(fields.size))
+		ColorChoice(card, access(fields.color))
+		Slider(card, "X offset", ns.AuraTextOffsetRange, access(fields.x))
+		Slider(card, "Y offset", ns.AuraTextOffsetRange, access(fields.y))
+	end
+
+	-- Reads and writes one setting of the picked group, or of its list mode.
+	local function Field(field)
+		return { get = function() return Get(field) end, set = function(value) Set(field, value) end }
+	end
+
+	local function ListField(field)
+		return { get = function() return GetList(field) end, set = function(value) SetList(field, value) end }
+	end
+
+	-- Position settings belong to the mode in use, since list mode has its own.
+	local function IsList()
+		return selected.hasListMode == true and Get("mode") == "list"
+	end
+
+	local function PositionField(field)
+		return {
+			get = function() return IsList() and GetList(field) or Get(field) end,
+			set = function(value)
+				if IsList() then
+					SetList(field, value)
+				else
+					Set(field, value)
+				end
+			end,
+		}
+	end
+
+	-- Layout first, for the groups that have a list mode
+	local modeCard = CreateCard(content, "Layout")
+	Choices(modeCard, "Mode", ns.AuraModes, Field("mode"))
+	local modeHint = modeCard:Add(CreateHint(modeCard, ""))
+
+	-- Then position, of the mode in use. Anchored groups have none, and say where they sit instead.
+	local positionCard = CreateCard(content, "Position")
+	Choices(positionCard, "Frame point", ns.AuraPoints, PositionField("point"))
+	Choices(positionCard, "Attach to", ns.AuraAnchorTargets, PositionField("anchorTo"))
+	Choices(positionCard, "Attach point", ns.AuraPoints, PositionField("anchorPoint"))
+	Slider(positionCard, "X offset", ns.AuraOffsetRange, PositionField("x"))
+	Slider(positionCard, "Y offset", ns.AuraOffsetRange, PositionField("y"))
+	positionCard:Add(CreateHint(positionCard,
+		"Sizes and offsets follow your UI scale. You can also drag the frame while frames are unlocked."), 4)
+
+	local anchoredCard = CreateCard(content, "Position")
+	local anchoredNote = anchoredCard:Add(CreateLabel(anchoredCard, "GameFontHighlightSmall", ""), 4)
+	anchoredNote:SetWordWrap(true)
+
+	-- Then the icons: standard mode
+	local iconCard = CreateCard(content, "Icons")
+	Slider(iconCard, "Icon size", ns.AuraIconSizeRange, Field("iconSize"))
+	Slider(iconCard, "Spacing", ns.AuraSpacingRange, Field("spacing"))
+	-- Groups that set the player's own auras apart give them their own size.
+	local ownSize = Slider(iconCard, "Your debuffs icon size", ns.AuraIconSizeRange, Field("ownIconSize"))
+	local growthRow = Choices(iconCard, "Growth", ns.AuraGrowths, Field("growth"))
+	local frameSize = Slider(iconCard, "Frame width", ns.AuraFrameSizeRange, Field("frameSize"))
+
+	-- or list mode
+	local listIconCard = CreateCard(content, "Icons")
+	Toggle(listIconCard, "Icon on the right", {
+		get = function() return GetList("iconSide") == "RIGHT" end,
+		set = function(checked) SetList("iconSide", checked and "RIGHT" or "LEFT") end,
+	})
+	-- A list growing up starts at the bottom, so it can rise from beside a bar.
+	Toggle(listIconCard, "Grow up", ListField("growUp"))
+	Slider(listIconCard, "Icon size", ns.AuraIconSizeRange, ListField("iconSize"))
+	Slider(listIconCard, "Spacing", ns.AuraSpacingRange, ListField("spacing"))
+
+	-- Then the texts
+	local textCard = CreateCard(content, "Time text")
+	TextChoices(textCard, Field, { font = "font", size = "textSize", color = "textColor", x = "textX", y = "textY" })
+
+	local nameCard = CreateCard(content, "Name")
+	TextChoices(nameCard, ListField, { font = "nameFont", size = "nameSize", color = "nameColor", x = "nameX", y = "nameY" })
+
+	local timeCard = CreateCard(content, "Time")
+	TextChoices(timeCard, ListField, { font = "timeFont", size = "timeSize", color = "timeColor", x = "timeX", y = "timeY" })
+
+	local settingsCards = { modeCard, positionCard, anchoredCard, iconCard, listIconCard, textCard, nameCard, timeCard }
+
+	function refresh()
+		for _, entry in ipairs(groupRows) do
+			entry.row.selected:SetShown(entry.group == selected)
+			entry.row.toggle:SetChecked(ns.GetAuraSettings(entry.group.key).enabled)
+		end
+		testRow.toggle:SetChecked(ns.auraTestMode)
+
+		local hasListMode = selected.hasListMode == true
+		local isAnchored = selected.anchored == true
+		local isList = IsList()
+		modeCard:SetShown(hasListMode)
+		if hasListMode then
+			modeHint:SetText(ns.AuraModesByKey[Get("mode")].description)
+		end
+		iconCard:SetShown(not isList)
+		textCard:SetShown(not isList)
+		listIconCard:SetShown(isList)
+		nameCard:SetShown(isList)
+		timeCard:SetShown(isList)
+		positionCard:SetShown(not isAnchored)
+		anchoredCard:SetShown(isAnchored)
+		anchoredNote:SetText(selected.anchorNote or "")
+
+		-- Anchored groups take their growth and width from the frame they sit on.
+		growthRow:SetShown(not isAnchored)
+		frameSize:SetShown(not isAnchored)
+		ownSize:SetShown(selected.hasOwnSize == true)
+		if not isAnchored then
+			-- Growth that fills up or down first wraps at the frame's height instead.
+			local growth = ns.AuraGrowthsByKey[Get("growth")]
+			local isVertical = growth.line == "UP" or growth.line == "DOWN"
+			frameSize.label:SetText(isVertical and "Frame height" or "Frame width")
+		end
+		for _, entry in ipairs(syncs) do
+			if IsShowing(entry.row) then
+				entry.sync()
+			end
+		end
+		if options.relayout then
+			options.relayout()
+		end
+	end
+
+	-- Dragging the frame while unlocked changes its offsets, which the sliders follow.
+	function ns.OnAuraSettingsMoved(groupKey)
+		if groupKey == selected.key and content:IsVisible() then
+			refresh()
+		end
+	end
+
+	-- The sidebar keeps its width at the left, and the picked group's sections flow beside it.
+	function options.Layout(pageWidth)
+		local sidebarBottom = PAGE_PADDING + PlaceCard(groupsCard, content, PAGE_PADDING, PAGE_PADDING, SIDEBAR_WIDTH)
+		sidebarBottom = sidebarBottom + SECTION_GAP + PlaceCard(testCard, content, PAGE_PADDING, sidebarBottom + SECTION_GAP, SIDEBAR_WIDTH)
+		local settingsX = PAGE_PADDING + SIDEBAR_WIDTH + COLUMN_GAP
+		local settingsBottom = LayoutCards(settingsCards, content, settingsX, PAGE_PADDING, pageWidth - SIDEBAR_WIDTH - COLUMN_GAP)
+		return math.max(sidebarBottom, settingsBottom)
+	end
+
+	options.Sync = refresh
+	options.SetCombatLocked = function() end
+	return options
+end
+
+local COMBAT_TEXT_ATTACH = {
+	{ key = "player", label = "Player bar",
+		hint = "Rises from above the player bar, and above your short buffs while you have any." },
+	{ key = "free", label = "Where you drag it",
+		hint = "Stays where you dropped it." },
+}
+
+-- Blizzard's scrolling combat text: where it rises from, its font and scale, and colors for kinds of
+-- hits. None of it is protected, so it all works in combat.
+local function BuildCombatText(content, _, relayout)
+	local refresh
+
+	local positionCard = CreateCard(content, "Position")
+	local moveRow = positionCard:Add(CreateToggleRow(positionCard, "Move combat text", function(checked)
+		ns.SetCombatTextOption("enabled", checked)
+		refresh()
+	end))
+	local attachRow = positionCard:Add(CreateDropdownRow(positionCard, "Attach to"))
+	local attachHint = positionCard:Add(CreateHint(positionCard, ""))
+	positionCard:Add(CreateHint(positionCard,
+		"Press Unlock frames to drag the Combat text box. Dropping it keeps it where you put it."), 4)
+	local function OffsetRow(text, key)
+		return positionCard:Add(CreateSliderRow(positionCard, text, ns.CombatTextOffsetRange, FormatSize,
+			function() return ns.GetCombatTextOption(key) end,
+			function(value)
+				ns.SetCombatTextOption(key, math.floor(value + 0.5))
+			end), 4)
+	end
+	local offsetX = OffsetRow("X offset", "offsetX")
+	local offsetY = OffsetRow("Y offset", "offsetY")
+	local reset = positionCard:Add(CreateButton(positionCard, "Reset position", 134), 6, true)
+	reset:SetScript("OnClick", function()
+		ns.ResetCombatTextPosition()
+		refresh()
+	end)
+
+	SetUpChoiceMenu(attachRow.dropdown, COMBAT_TEXT_ATTACH,
+		function() return ns.GetCombatTextOption("attach") end,
+		function(key)
+			ns.SetCombatTextOption("attach", key)
+			refresh()
+		end)
+
+	local fontCard = CreateCard(content, "Font and scale")
+	local fontRow = fontCard:Add(CreateDropdownRow(fontCard, "Font"))
+	local outlineRow = fontCard:Add(CreateDropdownRow(fontCard, "Outline"))
+	local scale = fontCard:Add(CreateSliderRow(fontCard, "Scale", ns.CombatTextScaleRange, FormatScale,
+		function() return ns.GetCombatTextOption("scale") end,
+		function(value)
+			ns.SetCombatTextOption("scale", math.floor(value * 100 + 0.5) / 100)
+		end))
+	fontCard:Add(CreateHint(fontCard,
+		"Scale changes the text, the space between lines and how far they rise, all together."), 2)
+
+	-- nil is the game's own combat text font.
+	SetUpFontMenu(fontRow.dropdown,
+		function() return ns.GetCombatTextOption("font") end,
+		function(font)
+			ns.SetCombatTextOption("font", font)
+			refresh()
+		end, "Game's combat font")
+
+	SetUpChoiceMenu(outlineRow.dropdown, ns.CombatTextOutlines,
+		function() return ns.GetCombatTextOption("outline") end,
+		function(outline)
+			ns.SetCombatTextOption("outline", outline)
+			refresh()
+		end)
+
+	-- One switch per kind of hit, with a swatch beside it. Switched off, the kind keeps Blizzard's color.
+	local colorCard = CreateCard(content, "Colors")
+	local colorRows = {}
+	for _, group in ipairs(ns.CombatTextColorGroups) do
+		local row = colorCard:Add(CreateToggleRow(colorCard, group.label, function(checked)
+			ns.SetCombatTextColor(group.key, checked and { unpack(group.default) } or nil)
+			refresh()
+		end))
+		local swatch = CreateSwatch(row)
+		swatch:SetPoint("RIGHT", row.toggle, "LEFT", -12, 0)
+		swatch:SetScript("OnClick", function()
+			local previous = ns.GetCombatTextColor(group.key)
+			local start = previous or group.default
+			PickColor(start[1], start[2], start[3], function(color)
+				ns.SetCombatTextColor(group.key, color)
+				refresh()
+			end, function()
+				ns.SetCombatTextColor(group.key, previous)
+				refresh()
+			end)
+		end)
+		colorRows[#colorRows + 1] = { row = row, swatch = swatch, group = group }
+	end
+	colorCard:Add(CreateHint(colorCard,
+		"Switched off, a kind keeps Blizzard's color. Crits count with their kind. New colors show on the next hit."), 2)
+
+	local aboutCard = CreateCard(content, "The game's options")
+	local about = aboutCard:Add(CreateLabel(aboutCard, "GameFontHighlightSmall",
+		"These change the game's own scrolling combat text, which only shows while it's switched on in the game's options. Which kinds of text show, and whether they scroll up, down or in an arc, are set there too.\n\nThe damage numbers over enemies are drawn by the game, so addons can't change them."), 2)
+	about:SetWordWrap(true)
+
+	local shownAttach
+
+	function refresh()
+		local enabled = ns.GetCombatTextOption("enabled")
+		moveRow.toggle:SetChecked(enabled)
+		attachRow.dropdown:GenerateMenu()
+		attachRow.dropdown:SetEnabled(enabled)
+		offsetX:Sync()
+		offsetY:Sync()
+		offsetX:SetEnabled(enabled)
+		offsetY:SetEnabled(enabled)
+		reset:SetEnabled(enabled)
+		fontRow.dropdown:GenerateMenu()
+		outlineRow.dropdown:GenerateMenu()
+		scale:Sync()
+		for _, entry in ipairs(colorRows) do
+			local color = ns.GetCombatTextColor(entry.group.key)
+			entry.row.toggle:SetChecked(color ~= nil)
+			local shown = color or entry.group.default
+			entry.swatch:SetSwatchColor(shown[1], shown[2], shown[3], color == nil)
+		end
+		-- The hint wraps to a different height for each choice, so the page is laid out again.
+		local attach = ns.GetCombatTextOption("attach")
+		if attach ~= shownAttach then
+			shownAttach = attach
+			for _, choice in ipairs(COMBAT_TEXT_ATTACH) do
+				if choice.key == attach then
+					attachHint:SetText(choice.hint)
+				end
+			end
+			relayout()
+		end
+	end
+
+	-- Dragging the box while unlocked changes where it's attached, which the dropdown follows.
+	function ns.OnCombatTextMoved()
+		if content:IsVisible() then
+			refresh()
+		end
+	end
+
+	return {
+		Sync = refresh,
+		SetCombatLocked = function() end,
+		Layout = CreateFlow(content, { positionCard, fontCard, colorCard, aboutCard }),
+	}
 end
 
 -- A flat Blizzard panel with a title and close button.
-local function CreatePanel(name, parent, width, height, title)
-	local frame = CreateFrame("Frame", name, parent, "DefaultPanelFlatTemplate")
+local function CreatePanel(name, parent, width, height, title, template)
+	local frame = CreateFrame("Frame", name, parent, template or "DefaultPanelFlatTemplate")
 	frame:SetSize(width, height)
 	frame:SetToplevel(true)
 	frame:EnableMouse(true)
@@ -736,7 +1618,9 @@ local function CreatePanel(name, parent, width, height, title)
 		fill:SetColorTexture(0.07, 0.07, 0.08, 1)
 	end
 
-	CreateFrame("Button", nil, frame, "UIPanelCloseButtonDefaultAnchors")
+	if not frame.CloseButton then
+		CreateFrame("Button", nil, frame, "UIPanelCloseButtonDefaultAnchors")
+	end
 	return frame
 end
 
@@ -940,539 +1824,17 @@ local function BuildProfiles(content, context)
 				dialog:Hide()
 			end
 		end,
-		Layout = function(pageWidth)
-			return LayoutCards({ profilesCard, manageCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
-		end,
+		Layout = CreateFlow(content, { profilesCard, manageCard }),
 	}
-end
-
-local SIDEBAR_WIDTH = 170
-local AURA_DROPDOWN_WIDTH = 130
-local AURA_GROUP_HEIGHT = 30
-
--- The groups down the left, each with its own switch, and the picked group's settings beside them.
--- None of it is protected, so it all works in combat.
-local function BuildAuras(content, context, relayout)
-	local selected = ns.AuraGroups[1]
-	local refresh
-	local syncs = {}
-
-	local function Get(field)
-		return ns.GetAuraSettings(selected.key)[field]
-	end
-
-	local function Set(field, value)
-		ns.SetAuraOption(selected.key, field, value)
-	end
-
-	local function GetList(field)
-		return ns.GetAuraSettings(selected.key).list[field]
-	end
-
-	local function SetList(field, value)
-		ns.SetAuraListOption(selected.key, field, value)
-	end
-
-	-- Sidebar: the groups, then test mode
-	local groupsCard = CreateCard(content, "Groups")
-	local groupRows = {}
-	for i, group in ipairs(ns.AuraGroups) do
-		local row = groupsCard:Add(CreateFrame("Button", nil, groupsCard), i == 1 and 2 or 0)
-		row:SetSize(SIDEBAR_WIDTH, AURA_GROUP_HEIGHT)
-
-		local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-		highlight:SetAllPoints()
-		highlight:SetColorTexture(1, 1, 1, 0.08)
-
-		row.selected = row:CreateTexture(nil, "BACKGROUND")
-		row.selected:SetAllPoints()
-		row.selected:SetColorTexture(TOGGLE_ON[1], TOGGLE_ON[2], TOGGLE_ON[3], 0.15)
-
-		local label = CreateLabel(row, group.built and "GameFontHighlight" or "GameFontDisable", group.label)
-		label:SetPoint("LEFT", 8, 0)
-
-		if group.built then
-			row.toggle = CreateToggle(row, function(checked)
-				ns.SetAuraOption(group.key, "enabled", checked)
-			end)
-			row.toggle:SetPoint("RIGHT", -4, 0)
-		else
-			local soon = CreateLabel(row, "GameFontDisableSmall", "Soon")
-			soon:SetPoint("RIGHT", -8, 0)
-		end
-
-		row:SetScript("OnClick", function()
-			selected = group
-			PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-			refresh()
-		end)
-		groupRows[i] = { row = row, group = group }
-	end
-
-	local testCard = CreateCard(content, "Test mode")
-	local testRow = testCard:Add(CreateToggleRow(testCard, "Show test buffs", ns.SetAuraTestMode), 2)
-	local testHint = testCard:Add(CreateLabel(testCard, "GameFontDisableSmall",
-		"Fills every group with sample buffs, so you can see the layout as you change it. Target debuffs show while you have a target, and target buffs show either way. Turns off when you reload."), 2)
-	testHint:SetWordWrap(true)
-	if ns.hasMasque then
-		local masqueHint = testCard:Add(CreateLabel(testCard, "GameFontDisableSmall",
-			"Masque is installed: pick a skin for these icons in Masque's settings (/masque)."), 10)
-		masqueHint:SetWordWrap(true)
-	end
-
-	-- Each row's refresh, run only while the row is showing, so a row never reads a setting the picked
-	-- group doesn't have.
-	local function AddSync(row, sync)
-		syncs[#syncs + 1] = { row = row, sync = sync }
-	end
-
-	local function IsShowing(region)
-		while region and region ~= content do
-			if not region:IsShown() then
-				return false
-			end
-			region = region:GetParent()
-		end
-		return true
-	end
-
-	-- A slider reads its value as it's made, while the first group is picked, which may not have this
-	-- setting. Its row only shows for groups that do.
-	local function Slider(card, text, range, access)
-		local function get()
-			local value = access.get()
-			return value ~= nil and value or range.min
-		end
-		local row = card:Add(CreateSliderRow(card, text, range, FormatSize, get, access.set))
-		AddSync(row, row.Sync)
-		return row
-	end
-
-	local function Toggle(card, text, access)
-		local row = card:Add(CreateToggleRow(card, text, access.set))
-		AddSync(row, function() row.toggle:SetChecked(access.get()) end)
-		return row
-	end
-
-	local function Dropdown(card, text)
-		local row = card:Add(CreateDropdownRow(card, text, nil, AURA_DROPDOWN_WIDTH))
-		AddSync(row, function() row.dropdown:GenerateMenu() end)
-		return row
-	end
-
-	local function Choices(card, text, list, access)
-		local row = Dropdown(card, text)
-		row.dropdown:SetupMenu(function(_, root)
-			for _, item in ipairs(list) do
-				root:CreateRadio(item.label,
-					function() return access.get() == item.key end,
-					function()
-						access.set(item.key)
-						refresh()
-					end, item)
-			end
-		end)
-		return row
-	end
-
-	-- Each font shows in its own typeface. nil is the default font.
-	local function FontChoice(card, access)
-		local row = Dropdown(card, "Font")
-		row.dropdown:SetupMenu(function(_, root)
-			root:SetScrollMode(360)
-			for _, font in ipairs(ns.GetFonts()) do
-				local radio = root:CreateRadio(font.name,
-					function() return SameFont(access.get() or ns.Text.font, font.path) end,
-					function()
-						access.set(not SameFont(font.path, ns.Text.font) and font.path or nil)
-						refresh()
-					end, font)
-				radio:AddInitializer(function(button)
-					button.fontString:SetFontObject(GetPreviewFont(font.path))
-				end)
-			end
-		end)
-		row.dropdown:SetDefaultText("Friz Quadrata")
-		return row
-	end
-
-	local function ColorChoice(card, access)
-		local row = card:Add(CreateFrame("Frame", nil, card))
-		row:SetSize(COLUMN_WIDTH, 30)
-		local label = CreateLabel(row, "GameFontHighlight", "Color")
-		label:SetPoint("LEFT")
-		local swatch = CreateFrame("Button", nil, row, "ColorSwatchTemplate")
-		swatch:SetSize(22, 22)
-		swatch.SwatchBg:SetSize(20, 20)
-		swatch.InnerBorder:SetSize(18, 18)
-		swatch.Color:SetSize(16, 16)
-		swatch:SetPoint("RIGHT", -2, 0)
-		swatch:SetScript("OnClick", function()
-			local previous = access.get()
-			ColorPickerFrame:SetupColorPickerAndShow({
-				r = previous[1], g = previous[2], b = previous[3],
-				swatchFunc = function()
-					access.set({ ColorPickerFrame:GetColorRGB() })
-					refresh()
-				end,
-				cancelFunc = function()
-					access.set(previous)
-					refresh()
-				end,
-			})
-		end)
-		AddSync(row, function() swatch:SetColorRGB(unpack(access.get())) end)
-		return row
-	end
-
-	-- A text's font, size, color and offsets from where it normally sits.
-	local function TextChoices(card, access, fields)
-		FontChoice(card, access(fields.font))
-		Slider(card, "Size", ns.AuraTextSizeRange, access(fields.size))
-		ColorChoice(card, access(fields.color))
-		Slider(card, "X offset", ns.AuraTextOffsetRange, access(fields.x))
-		Slider(card, "Y offset", ns.AuraTextOffsetRange, access(fields.y))
-	end
-
-	-- Reads and writes one setting of the picked group, or of its list mode.
-	local function Field(field)
-		return { get = function() return Get(field) end, set = function(value) Set(field, value) end }
-	end
-
-	local function ListField(field)
-		return { get = function() return GetList(field) end, set = function(value) SetList(field, value) end }
-	end
-
-	-- Position settings belong to the mode in use, since list mode has its own.
-	local function IsList()
-		return selected.hasListMode == true and Get("mode") == "list"
-	end
-
-	local function PositionField(field)
-		return {
-			get = function() return IsList() and GetList(field) or Get(field) end,
-			set = function(value)
-				if IsList() then
-					SetList(field, value)
-				else
-					Set(field, value)
-				end
-			end,
-		}
-	end
-
-	-- Groups that aren't built yet say so instead.
-	local soonCard = CreateCard(content, "Coming soon")
-	local soonNote = soonCard:Add(CreateLabel(soonCard, "GameFontDisable", ""), 6)
-
-	-- Mode, for the groups that have a list mode
-	local modeCard = CreateCard(content, "Layout")
-	Choices(modeCard, "Mode", ns.AuraModes, Field("mode"))
-	local modeHint = modeCard:Add(CreateLabel(modeCard, "GameFontDisableSmall", ""))
-	modeHint:SetWordWrap(true)
-
-	-- Standard mode
-	local iconCard = CreateCard(content, "Icons")
-	Slider(iconCard, "Icon size", ns.AuraIconSizeRange, Field("iconSize"))
-	Slider(iconCard, "Spacing", ns.AuraSpacingRange, Field("spacing"))
-	-- Groups that set the player's own auras apart give them their own size.
-	local ownSize = Slider(iconCard, "Your debuffs icon size", ns.AuraIconSizeRange, Field("ownIconSize"))
-	local growthRow = Choices(iconCard, "Growth", ns.AuraGrowths, Field("growth"))
-	local frameSize = Slider(iconCard, "Frame width", ns.AuraFrameSizeRange, Field("frameSize"))
-
-	local textCard = CreateCard(content, "Time text")
-	TextChoices(textCard, Field, { font = "font", size = "textSize", color = "textColor", x = "textX", y = "textY" })
-
-	-- List mode
-	local listIconCard = CreateCard(content, "Icons")
-	Toggle(listIconCard, "Icon on the right", {
-		get = function() return GetList("iconSide") == "RIGHT" end,
-		set = function(checked) SetList("iconSide", checked and "RIGHT" or "LEFT") end,
-	})
-	-- A list growing up starts at the bottom, so it can rise from beside a bar.
-	Toggle(listIconCard, "Grow up", ListField("growUp"))
-	Slider(listIconCard, "Icon size", ns.AuraIconSizeRange, ListField("iconSize"))
-	Slider(listIconCard, "Spacing", ns.AuraSpacingRange, ListField("spacing"))
-
-	local nameCard = CreateCard(content, "Name")
-	TextChoices(nameCard, ListField, { font = "nameFont", size = "nameSize", color = "nameColor", x = "nameX", y = "nameY" })
-
-	local timeCard = CreateCard(content, "Time")
-	TextChoices(timeCard, ListField, { font = "timeFont", size = "timeSize", color = "timeColor", x = "timeX", y = "timeY" })
-
-	-- Position, of the mode in use. Anchored groups have none, and say where they sit instead.
-	local positionCard = CreateCard(content, "Position")
-	Choices(positionCard, "Frame point", ns.AuraPoints, PositionField("point"))
-	Choices(positionCard, "Attach to", ns.AuraAnchorTargets, PositionField("anchorTo"))
-	Choices(positionCard, "Attach point", ns.AuraPoints, PositionField("anchorPoint"))
-	Slider(positionCard, "X offset", ns.AuraOffsetRange, PositionField("x"))
-	Slider(positionCard, "Y offset", ns.AuraOffsetRange, PositionField("y"))
-	local positionHint = positionCard:Add(CreateLabel(positionCard, "GameFontDisableSmall",
-		"Sizes and offsets follow your UI scale. You can also drag the frame while frames are unlocked."), 4)
-	positionHint:SetWordWrap(true)
-
-	local anchoredCard = CreateCard(content, "Position")
-	local anchoredNote = anchoredCard:Add(CreateLabel(anchoredCard, "GameFontHighlightSmall", ""), 4)
-	anchoredNote:SetWordWrap(true)
-
-	local settingsCards = { soonCard, modeCard, iconCard, listIconCard, textCard, nameCard, timeCard, positionCard, anchoredCard }
-
-	function refresh()
-		for _, entry in ipairs(groupRows) do
-			entry.row.selected:SetShown(entry.group == selected)
-			if entry.row.toggle then
-				entry.row.toggle:SetChecked(ns.GetAuraSettings(entry.group.key).enabled)
-			end
-		end
-		testRow.toggle:SetChecked(ns.auraTestMode)
-
-		local built = selected.built == true
-		local hasListMode = built and selected.hasListMode == true
-		local isAnchored = selected.anchored == true
-		local isList = built and IsList()
-		soonCard:SetShown(not built)
-		soonNote:SetText(selected.label .. " are coming soon.")
-		modeCard:SetShown(hasListMode)
-		if hasListMode then
-			modeHint:SetText(ns.AuraModesByKey[Get("mode")].description)
-		end
-		iconCard:SetShown(built and not isList)
-		textCard:SetShown(built and not isList)
-		listIconCard:SetShown(isList)
-		nameCard:SetShown(isList)
-		timeCard:SetShown(isList)
-		positionCard:SetShown(built and not isAnchored)
-		anchoredCard:SetShown(built and isAnchored)
-		anchoredNote:SetText(selected.anchorNote or "")
-
-		-- Anchored groups take their growth and width from the frame they sit on.
-		growthRow:SetShown(not isAnchored)
-		frameSize:SetShown(not isAnchored)
-		ownSize:SetShown(selected.hasOwnSize == true)
-		if built and not isAnchored then
-			-- Growth that fills up or down first wraps at the frame's height instead.
-			local growth = ns.AuraGrowthsByKey[Get("growth")]
-			local isVertical = growth.line == "UP" or growth.line == "DOWN"
-			frameSize.label:SetText(isVertical and "Frame height" or "Frame width")
-		end
-		if built then
-			for _, entry in ipairs(syncs) do
-				if IsShowing(entry.row) then
-					entry.sync()
-				end
-			end
-		end
-		relayout()
-	end
-
-	-- Dragging the frame while unlocked changes its offsets, which the sliders follow.
-	function ns.OnAuraSettingsMoved(groupKey)
-		if groupKey == selected.key and content:IsVisible() then
-			refresh()
-		end
-	end
-
-	-- The sidebar keeps its width at the left, and the picked group's sections flow beside it.
-	local function Layout(pageWidth)
-		local sidebarBottom = PAGE_PADDING + PlaceCard(groupsCard, content, PAGE_PADDING, PAGE_PADDING, SIDEBAR_WIDTH)
-		sidebarBottom = sidebarBottom + SECTION_GAP + PlaceCard(testCard, content, PAGE_PADDING, sidebarBottom + SECTION_GAP, SIDEBAR_WIDTH)
-		local settingsX = PAGE_PADDING + SIDEBAR_WIDTH + COLUMN_GAP
-		local settingsBottom = LayoutCards(settingsCards, content, settingsX, PAGE_PADDING, pageWidth - SIDEBAR_WIDTH - COLUMN_GAP)
-		return math.max(sidebarBottom, settingsBottom)
-	end
-
-	return { Sync = refresh, SetCombatLocked = function() end, Layout = Layout }
-end
-
-local COMBAT_TEXT_ATTACH = {
-	{ key = "player", label = "Player bar",
-		hint = "Rises from above the player bar, and above your short buffs while you have any." },
-	{ key = "free", label = "Where you drag it",
-		hint = "Stays where you dropped it." },
-}
-
--- Blizzard's scrolling combat text: where it rises from, its font and scale, and colors for kinds of
--- hits. None of it is protected, so it all works in combat.
-local function BuildCombatText(content, _, relayout)
-	local refresh
-
-	local positionCard = CreateCard(content, "Position")
-	local moveRow = positionCard:Add(CreateToggleRow(positionCard, "Move combat text", function(checked)
-		ns.SetCombatTextOption("enabled", checked)
-		refresh()
-	end))
-	local attachRow = positionCard:Add(CreateDropdownRow(positionCard, "Attach to"))
-	local attachHint = positionCard:Add(CreateLabel(positionCard, "GameFontDisableSmall", ""))
-	attachHint:SetWordWrap(true)
-	local dragHint = positionCard:Add(CreateLabel(positionCard, "GameFontDisableSmall",
-		"Switch on Unlock frames to drag the Combat text box. Dropping it keeps it where you put it."), 4)
-	dragHint:SetWordWrap(true)
-	local function OffsetRow(text, key)
-		return positionCard:Add(CreateSliderRow(positionCard, text, ns.CombatTextOffsetRange, FormatSize,
-			function() return ns.GetCombatTextOption(key) end,
-			function(value)
-				ns.SetCombatTextOption(key, math.floor(value + 0.5))
-			end), 4)
-	end
-	local offsetX = OffsetRow("X offset", "offsetX")
-	local offsetY = OffsetRow("Y offset", "offsetY")
-	local reset = positionCard:Add(CreateButton(positionCard, "Reset position", 134), 6, true)
-	reset:SetScript("OnClick", function()
-		ns.ResetCombatTextPosition()
-		refresh()
-	end)
-
-	attachRow.dropdown:SetupMenu(function(_, root)
-		for _, attach in ipairs(COMBAT_TEXT_ATTACH) do
-			root:CreateRadio(attach.label,
-				function() return ns.GetCombatTextOption("attach") == attach.key end,
-				function()
-					ns.SetCombatTextOption("attach", attach.key)
-					refresh()
-				end, attach)
-		end
-	end)
-	attachRow.dropdown:SetSelectionTranslator(function(selection)
-		return selection.data.label
-	end)
-
-	local fontCard = CreateCard(content, "Font and scale")
-	local fontRow = fontCard:Add(CreateDropdownRow(fontCard, "Font"))
-	local outlineRow = fontCard:Add(CreateDropdownRow(fontCard, "Outline"))
-	local scale = fontCard:Add(CreateSliderRow(fontCard, "Scale", ns.CombatTextScaleRange, FormatScale,
-		function() return ns.GetCombatTextOption("scale") end,
-		function(value)
-			ns.SetCombatTextOption("scale", math.floor(value * 100 + 0.5) / 100)
-		end))
-	local scaleHint = fontCard:Add(CreateLabel(fontCard, "GameFontDisableSmall",
-		"Scale changes the text, the space between lines and how far they rise, all together."), 2)
-	scaleHint:SetWordWrap(true)
-
-	fontRow.dropdown:SetupMenu(function(_, root)
-		root:SetScrollMode(360)
-		for _, font in ipairs(ns.GetFonts()) do
-			local radio = root:CreateRadio(font.name,
-				function() return SameFont(ns.GetCombatTextOption("font") or ns.Text.font, font.path) end,
-				function()
-					ns.SetCombatTextOption("font", not SameFont(font.path, ns.Text.font) and font.path or nil)
-					refresh()
-				end, font)
-			radio:AddInitializer(function(button)
-				button.fontString:SetFontObject(GetPreviewFont(font.path))
-			end)
-		end
-	end)
-	fontRow.dropdown:SetDefaultText("Friz Quadrata")
-
-	outlineRow.dropdown:SetupMenu(function(_, root)
-		for _, outline in ipairs(ns.CombatTextOutlines) do
-			root:CreateRadio(outline.label,
-				function() return ns.GetCombatTextOption("outline") == outline.key end,
-				function()
-					ns.SetCombatTextOption("outline", outline.key)
-					refresh()
-				end, outline)
-		end
-	end)
-	outlineRow.dropdown:SetSelectionTranslator(function(selection)
-		return selection.data.label
-	end)
-
-	-- One switch per kind of hit, with a swatch beside it. Switched off, the kind keeps Blizzard's color.
-	local colorCard = CreateCard(content, "Colors")
-	local colorRows = {}
-	for _, group in ipairs(ns.CombatTextColorGroups) do
-		local row = colorCard:Add(CreateToggleRow(colorCard, group.label, function(checked)
-			ns.SetCombatTextColor(group.key, checked and { unpack(group.default) } or nil)
-			refresh()
-		end))
-		local swatch = CreateFrame("Button", nil, row, "ColorSwatchTemplate")
-		swatch:SetPropagateMouseClicks(false)
-		swatch:SetSize(22, 22)
-		swatch.SwatchBg:SetSize(20, 20)
-		swatch.InnerBorder:SetSize(18, 18)
-		swatch.Color:SetSize(16, 16)
-		swatch:SetPoint("RIGHT", row.toggle, "LEFT", -12, 0)
-		swatch:SetScript("OnClick", function()
-			local previous = ns.GetCombatTextColor(group.key)
-			local start = previous or group.default
-			ColorPickerFrame:SetupColorPickerAndShow({
-				r = start[1], g = start[2], b = start[3],
-				swatchFunc = function()
-					ns.SetCombatTextColor(group.key, { ColorPickerFrame:GetColorRGB() })
-					refresh()
-				end,
-				cancelFunc = function()
-					ns.SetCombatTextColor(group.key, previous)
-					refresh()
-				end,
-			})
-		end)
-		colorRows[#colorRows + 1] = { row = row, swatch = swatch, group = group }
-	end
-	local colorHint = colorCard:Add(CreateLabel(colorCard, "GameFontDisableSmall",
-		"Switched off, a kind keeps Blizzard's color. Crits count with their kind. New colors show on the next hit."), 2)
-	colorHint:SetWordWrap(true)
-
-	local aboutCard = CreateCard(content, "The game's options")
-	local about = aboutCard:Add(CreateLabel(aboutCard, "GameFontHighlightSmall",
-		"These change the game's own scrolling combat text, which only shows while it's switched on in the game's options. Which kinds of text show, and whether they scroll up, down or in an arc, are set there too.\n\nThe damage numbers over enemies are drawn by the game, so addons can't change them."), 2)
-	about:SetWordWrap(true)
-
-	local shownAttach
-
-	function refresh()
-		local enabled = ns.GetCombatTextOption("enabled")
-		moveRow.toggle:SetChecked(enabled)
-		attachRow.dropdown:GenerateMenu()
-		attachRow.dropdown:SetEnabled(enabled)
-		offsetX:Sync()
-		offsetY:Sync()
-		offsetX:SetEnabled(enabled)
-		offsetY:SetEnabled(enabled)
-		reset:SetEnabled(enabled)
-		fontRow.dropdown:GenerateMenu()
-		outlineRow.dropdown:GenerateMenu()
-		scale:Sync()
-		for _, entry in ipairs(colorRows) do
-			local color = ns.GetCombatTextColor(entry.group.key)
-			entry.row.toggle:SetChecked(color ~= nil)
-			local shown = color or entry.group.default
-			entry.swatch:SetColorRGB(shown[1], shown[2], shown[3])
-			entry.swatch:SetAlpha(color and 1 or 0.5)
-		end
-		-- The hint wraps to a different height for each choice, so the page is laid out again.
-		local attach = ns.GetCombatTextOption("attach")
-		if attach ~= shownAttach then
-			shownAttach = attach
-			for _, choice in ipairs(COMBAT_TEXT_ATTACH) do
-				if choice.key == attach then
-					attachHint:SetText(choice.hint)
-				end
-			end
-			relayout()
-		end
-	end
-
-	-- Dragging the box while unlocked changes where it's attached, which the dropdown follows.
-	function ns.OnCombatTextMoved()
-		if content:IsVisible() then
-			refresh()
-		end
-	end
-
-	local function Layout(pageWidth)
-		return LayoutCards({ positionCard, fontCard, colorCard, aboutCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
-	end
-
-	return { Sync = refresh, SetCombatLocked = function() end, Layout = Layout }
 end
 
 local TABS = {
 	{ label = "General", build = BuildGeneral },
-	{ label = "Text", build = BuildTextOptions },
-	{ label = "Buffs/Debuffs", build = BuildAuras },
-	{ label = "Combat text", build = BuildCombatText },
+	{ label = "Player & Pet Frame", build = BuildPlayer },
+	{ label = "Target Frame", build = BuildTarget },
+	{ label = "Power Orb and Cast Ring", build = BuildOrb },
+	{ label = "Buffs & Debuffs", build = BuildAuras },
+	{ label = "Incoming Combat Text", build = BuildCombatText },
 	{ label = "Profiles", build = BuildProfiles },
 }
 
@@ -1485,11 +1847,7 @@ local function GetWindowSize()
 	return math.min(math.max(width, MIN_WIDTH), maxWidth), math.min(math.max(height, MIN_HEIGHT), maxHeight), maxWidth, maxHeight
 end
 
--- Where the settings start below the title: under the tabs, which share a row with the switches at
--- the top when the window is wide enough, and drop below them when it isn't.
-local INSET_TOP, INSET_TOP_STACKED = -60, -88
-
--- Drag the bottom right corner to resize the window. Every tab lays itself out again to fit.
+-- Drag the bottom right corner to resize the window. Every page lays itself out again to fit.
 local function CreateResizeGrip(frame)
 	local grip = CreateFrame("Button", nil, frame)
 	grip:SetSize(16, 16)
@@ -1511,9 +1869,45 @@ local function CreateResizeGrip(frame)
 	return grip
 end
 
+-- Where the tabs and the page start below the title bar: under the logo, and the header row beside it.
+local BODY_TOP = -64
+
+-- The tabs down the left: a highlight on hover, and a gold bar and tint on the one that's open.
+local function CreateNavButton(parent, text)
+	local button = CreateFrame("Button", nil, parent)
+	button:SetHeight(NAV_ROW_HEIGHT)
+
+	local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+	highlight:SetAllPoints()
+	highlight:SetColorTexture(1, 1, 1, 0.08)
+
+	local selected = button:CreateTexture(nil, "BACKGROUND")
+	selected:SetAllPoints()
+	selected:SetColorTexture(TOGGLE_ON[1], TOGGLE_ON[2], TOGGLE_ON[3], 0.15)
+
+	local bar = button:CreateTexture(nil, "ARTWORK")
+	bar:SetWidth(3)
+	bar:SetPoint("TOPLEFT")
+	bar:SetPoint("BOTTOMLEFT")
+	bar:SetColorTexture(TOGGLE_ON[1], TOGGLE_ON[2], TOGGLE_ON[3], 1)
+
+	local label = CreateLabel(button, "GameFontNormal", text)
+	label:SetPoint("LEFT", 12, 0)
+	label:SetPoint("RIGHT", -6, 0)
+
+	function button:SetSelected(isSelected)
+		selected:SetShown(isSelected)
+		bar:SetShown(isSelected)
+		label:SetFontObject(isSelected and "GameFontHighlight" or "GameFontNormal")
+	end
+	button:SetSelected(false)
+	return button
+end
+
 local function CreateConfig()
 	local width, height, maxWidth, maxHeight = GetWindowSize()
-	local frame = CreatePanel("DibsUIConfig", UIParent, width, height, "DibsUI")
+	local frame = CreatePanel("DibsUIConfig", UIParent, width, height, "DibsUI", "PortraitFrameFlatTemplate")
+	frame:SetPortraitToAsset(ns.Media("Logo"))
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("HIGH")
 	frame:SetClampedToScreen(true)
@@ -1532,78 +1926,79 @@ local function CreateConfig()
 	tinsert(UISpecialFrames, frame:GetName())
 	CreateResizeGrip(frame)
 
-	local minimapToggle = CreateTopToggle(frame, "Show minimap button", ns.SetMinimapButtonShown)
-	minimapToggle:SetPoint("TOPRIGHT", -14, -26)
+	-- The open page's name, beside the logo.
+	local pageTitle = CreateLabel(frame, "GameFontHighlightLarge", "")
+	pageTitle:SetPoint("TOPLEFT", 70, -36)
 
-	-- Unlocking moves every frame, so it's here where every tab can reach it.
-	local unlockToggle = CreateTopToggle(frame, "Unlock frames", function(checked)
-		ns.SetLocked(not checked)
+	local minimapToggle = CreateToggleRow(frame, "Show minimap button", ns.SetMinimapButtonShown)
+	minimapToggle:SetWidth(minimapToggle.label:GetStringWidth() + 12 + TOGGLE_WIDTH)
+	minimapToggle:SetPoint("TOPRIGHT", -14, -28)
+
+	-- Unlocking moves every frame, so it's here where every page can reach it. It says what pressing it does.
+	local lockButton = CreateButton(frame, "Unlock frames", 130)
+	lockButton:SetPoint("RIGHT", minimapToggle, "LEFT", -24, 0)
+	local function SyncLockButton()
+		lockButton:SetText(ns.db.locked and "Unlock frames" or "Lock frames")
+	end
+	lockButton:SetScript("OnClick", function()
+		PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+		ns.SetLocked(not ns.db.locked)
 	end)
-	unlockToggle:SetPoint("RIGHT", minimapToggle, "LEFT", -28, 0)
-	-- /dibsui lock can change it while the window is open. A click on the switch is already showing,
-	-- sliding across.
-	hooksecurefunc(ns, "SetLocked", function()
-		if unlockToggle.toggle:GetChecked() ~= not ns.db.locked then
-			unlockToggle.toggle:SetChecked(not ns.db.locked)
-		end
-	end)
+	-- /dibsui lock can change it while the window is open.
+	hooksecurefunc(ns, "SetLocked", SyncLockButton)
+
+	local nav = CreateFrame("Frame", nil, frame, "InsetFrameTemplate")
+	nav:SetPoint("TOPLEFT", 10, BODY_TOP)
+	nav:SetPoint("BOTTOMLEFT", 10, 30)
+	nav:SetWidth(NAV_WIDTH)
 
 	local inset = CreateFrame("Frame", nil, frame, "InsetFrameTemplate")
-	inset:SetPoint("TOPLEFT", 10, INSET_TOP)
+	inset:SetPoint("TOPLEFT", nav, "TOPRIGHT", 6, 0)
 	inset:SetPoint("BOTTOMRIGHT", -8, 30)
 
-	local pages = {}
+	local pages, navButtons = {}, {}
+	frame.navButtons = navButtons
 
-	-- After a profile switch every tab shows the new profile's settings.
+	-- After a profile switch every page shows the new profile's settings.
 	local context = { window = frame }
 	function context.SyncAll()
-		unlockToggle.toggle:SetChecked(not ns.db.locked)
+		SyncLockButton()
 		for _, page in ipairs(pages) do
 			page.options.Sync()
 		end
 	end
 
-	for i, info in ipairs(TABS) do
-		local tab = CreateFrame("Button", nil, frame, "PanelTopTabButtonTemplate")
-		tab:SetID(i)
-		tab:SetText(info.label)
-		if i == 1 then
-			tab:SetPoint("BOTTOMLEFT", inset, "TOPLEFT", 8, -2)
-		else
-			tab:SetPoint("LEFT", frame.Tabs[i - 1], "RIGHT", 4, 0)
+	local function SelectTab(index)
+		for i, page in ipairs(pages) do
+			navButtons[i]:SetSelected(i == index)
+			page:SetShown(i == index)
 		end
-		tab:SetScript("OnClick", function(self)
-			PanelTemplates_SetTab(frame, self:GetID())
-			for index, page in ipairs(pages) do
-				page:SetShown(index == self:GetID())
-			end
+		pageTitle:SetText(TABS[index].label)
+		ns.account.configTab = index
+	end
+
+	for i, info in ipairs(TABS) do
+		local button = CreateNavButton(nav, info.label)
+		button:SetPoint("TOPLEFT", 4, -6 - (i - 1) * (NAV_ROW_HEIGHT + 2))
+		button:SetPoint("RIGHT", -4, 0)
+		button:SetScript("OnClick", function()
+			SelectTab(i)
 			PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
 		end)
+		navButtons[i] = button
 
 		local page = CreateScrollPage(inset)
-		page.options = info.build(page.content, context, function() page:Relayout() end)
+		local function relayout() page:Relayout() end
+		page.options = info.build(page.content, context, relayout)
+		page.options.relayout = relayout
 		pages[i] = page
 	end
-	PanelTemplates_SetNumTabs(frame, #TABS)
-	PanelTemplates_SetTab(frame, 1)
-	pages[1]:Show()
-
-	local function FitHeader()
-		local tabsWidth = 18
-		for _, tab in ipairs(frame.Tabs) do
-			tabsWidth = tabsWidth + (tab:GetWidth() or 0) + 4
-		end
-		local togglesWidth = (unlockToggle:GetWidth() or 0) + 28 + (minimapToggle:GetWidth() or 0) + 14
-		local stacked = (frame:GetWidth() or 0) < tabsWidth + togglesWidth + 16
-		inset:SetPoint("TOPLEFT", 10, stacked and INSET_TOP_STACKED or INSET_TOP)
-	end
-	frame:HookScript("OnSizeChanged", FitHeader)
 
 	local combatNote = CreateLabel(frame, "GameFontDisableSmall", "Frame size, position and profiles can't be changed during combat")
 	combatNote:SetPoint("BOTTOM", 0, 11)
 
 	local function SetCombatLocked(locked)
-		unlockToggle:SetEnabled(not locked)
+		lockButton:SetEnabled(not locked)
 		for _, page in ipairs(pages) do
 			page.options.SetCombatLocked(locked)
 		end
@@ -1617,7 +2012,6 @@ local function CreateConfig()
 	end)
 
 	frame:SetScript("OnShow", function()
-		FitHeader()
 		minimapToggle.toggle:SetChecked(ns.account.showMinimapButton)
 		context.SyncAll()
 		SetCombatLocked(InCombatLockdown())
@@ -1626,6 +2020,8 @@ local function CreateConfig()
 		end
 	end)
 
+	local savedTab = tonumber(ns.account.configTab)
+	SelectTab(savedTab and TABS[savedTab] and savedTab or 1)
 	return frame
 end
 
@@ -1639,8 +2035,14 @@ function ns.ToggleConfig()
 	config:SetShown(not config:IsShown())
 end
 
--- Locks or unlocks the frames, like the switch at the top of the window, and says which. Like the
--- switch, it waits for combat to end.
+function ns.OpenConfig()
+	if not (config and config:IsShown()) then
+		ns.ToggleConfig()
+	end
+end
+
+-- Locks or unlocks the frames, like the button at the top of the window, and says which. Like the
+-- button, it waits for combat to end.
 function ns.ToggleLocked()
 	if InCombatLockdown() then
 		print("|cffffd100DibsUI|r: frames can't be locked or unlocked during combat.")
@@ -1665,3 +2067,46 @@ SlashCmdList.DIBSUI = function(message)
 		ns.ToggleConfig()
 	end
 end
+
+-- The game's own settings ------------------------------------------------------------------------
+
+-- DibsUI's page under the game's Options, AddOns: the logo, a line about it, and a button that opens
+-- the full window. The settings live in that window, so this page only points to it.
+local function RegisterGameSettings()
+	if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then
+		return
+	end
+	local panel = CreateFrame("Frame")
+
+	local logo = panel:CreateTexture(nil, "ARTWORK")
+	logo:SetTexture(ns.Media("Logo"))
+	logo:SetSize(64, 64)
+	logo:SetPoint("TOPLEFT", 12, -12)
+
+	local title = CreateLabel(panel, "GameFontNormalHuge", "DibsUI")
+	title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 12, -6)
+
+	local version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("DibsUI", "Version")
+	local subtitle = CreateLabel(panel, "GameFontHighlight",
+		"Winged unit frames around a power orb." .. (version and ("  |cff9d9d9dVersion " .. version .. "|r") or ""))
+	subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+
+	local open = CreateButton(panel, "Open DibsUI settings", 190)
+	open:SetPoint("TOPLEFT", logo, "BOTTOMLEFT", 0, -18)
+	open:SetScript("OnClick", function()
+		if SettingsPanel and SettingsPanel:IsShown() then
+			HideUIPanel(SettingsPanel)
+		end
+		ns.OpenConfig()
+	end)
+
+	local help = CreateLabel(panel, "GameFontHighlightSmall",
+		"You can also type /dibsui or /dui, or click DibsUI's minimap button. /dibsui lock locks or unlocks the frames.")
+	help:SetPoint("TOPLEFT", open, "BOTTOMLEFT", 0, -12)
+
+	local category = Settings.RegisterCanvasLayoutCategory(panel, "DibsUI")
+	Settings.RegisterAddOnCategory(category)
+	ns.settingsCategory = category
+end
+
+RegisterGameSettings()

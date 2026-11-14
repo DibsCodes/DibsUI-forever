@@ -59,8 +59,29 @@ for _, format in ipairs(ns.ValueFormats) do
 	ns.ValueFormatsByKey[format.key] = format
 end
 
--- The game's own fonts. Only the ones this client can load are offered.
+-- DibsUI's own font, under the SIL Open Font License (Media/Fonts/OFL.txt). It's the master font
+-- until another is picked.
+ns.DEFAULT_MASTER_FONT = ns.Media("Fonts\\BarlowSemiCondensed-Black.ttf")
+
+-- The master font is what every text uses unless it has a font of its own.
+function ns.GetMasterFont()
+	return ns.db and ns.db.masterFont or ns.DEFAULT_MASTER_FONT
+end
+
+-- How a text's letters are outlined.
+ns.Outlines = {
+	{ key = "NONE", label = "None", flags = "" },
+	{ key = "OUTLINE", label = "Outline", flags = "OUTLINE" },
+	{ key = "THICKOUTLINE", label = "Thick outline", flags = "THICKOUTLINE" },
+}
+ns.OutlinesByKey = {}
+for _, outline in ipairs(ns.Outlines) do
+	ns.OutlinesByKey[outline.key] = outline
+end
+
+-- DibsUI's font, then the game's own. Only the ones this client can load are offered.
 local GAME_FONTS = {
+	{ name = "Barlow Semi Condensed Black", path = ns.DEFAULT_MASTER_FONT },
 	{ name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
 	{ name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
 	{ name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
@@ -101,7 +122,7 @@ function ns.GetFonts()
 	return fonts
 end
 
--- What a spot uses until the settings say otherwise. Font and color default to nil: the standard
+-- What a spot uses until the settings say otherwise. Font and color default to nil: the master
 -- font, and whatever color the game gives the spot.
 local function DefaultOption(key, part)
 	local field = ns.TextFields[key]
@@ -115,6 +136,8 @@ local function DefaultOption(key, part)
 		return ns.Text[key].size
 	elseif part == "offsetX" or part == "offsetY" then
 		return 0
+	elseif part == "outline" then
+		return ns.Text.outline
 	end
 end
 
@@ -142,10 +165,12 @@ local function ApplyTextColor(text)
 	end
 end
 
--- A font that's gone, such as one from a LibSharedMedia addon that's been removed, falls back to the default.
-local function SetFont(text, font, size)
-	if not (font and text:SetFont(font, size, ns.Text.outline)) then
-		text:SetFont(ns.Text.font, size, ns.Text.outline)
+-- A font that's gone, such as one from a LibSharedMedia addon that's been removed, falls back to the
+-- master font, then to the game's.
+local function SetFont(text, font, size, outline)
+	local flags = ns.OutlinesByKey[outline].flags
+	if not (font and text:SetFont(font, size, flags)) and not text:SetFont(ns.GetMasterFont(), size, flags) then
+		text:SetFont(ns.Text.font, size, flags)
 	end
 end
 
@@ -157,14 +182,14 @@ local NAME_GAP = 4
 
 local function ApplyTextStyle(text)
 	local key = text.styleKey
-	local font, size = ns.GetTextOption(key, "font"), ns.GetTextOption(key, "size")
-	SetFont(text, font, size)
+	local font, size, outline = ns.GetTextOption(key, "font"), ns.GetTextOption(key, "size"), ns.GetTextOption(key, "outline")
+	SetFont(text, font, size, outline)
 	if text.lead then
-		SetFont(text.lead, font, math.floor(size * ns.Text.lead.scale + 0.5))
+		SetFont(text.lead, font, math.floor(size * ns.Text.lead.scale + 0.5), outline)
 	end
 	if text.surname then
-		SetFont(text.surname, font, math.floor(size * SURNAME_SCALE + 0.5))
-		SetFont(text.level, font, size)
+		SetFont(text.surname, font, math.floor(size * SURNAME_SCALE + 0.5), outline)
+		SetFont(text.level, font, size, outline)
 	end
 	ApplyTextColor(text)
 end
@@ -332,7 +357,7 @@ function ns.CreateText(parent, key, hoverRegion)
 	if ns.TextFields[key] then
 		Register(text)
 	else
-		text:SetFont(ns.Text.font, ns.Text[key].size, ns.Text.outline)
+		SetFont(text, nil, ns.Text[key].size, ns.Text.outline)
 		text:SetTextColor(1, 1, 1)
 	end
 	return text
@@ -435,7 +460,7 @@ function ns.GetTextDefaultColor(key)
 end
 
 -- Changes one part of a field's style: "font", "size", "color", "enabled", "mouseover", "format",
--- "offsetX" or "offsetY".
+-- "outline", "offsetX" or "offsetY".
 -- nil, or the default value, goes back to the default and leaves nothing saved for it.
 function ns.SetTextStyle(key, part, value)
 	if value == DefaultOption(key, part) then
@@ -469,10 +494,34 @@ function ns.RefreshAllText()
 	end
 end
 
-ns.TextStyleParts = { "font", "size", "color", "enabled", "mouseover", "format", "offsetX", "offsetY" }
+ns.TextStyleParts = { "font", "size", "color", "enabled", "mouseover", "format", "outline", "offsetX", "offsetY" }
 
 function ns.ResetTextStyle(key)
 	for _, part in ipairs(ns.TextStyleParts) do
 		ns.SetTextStyle(key, part, nil)
 	end
+end
+
+-- The master font, nil for DibsUI's own. Texts without a font of their own follow it, the buffs' texts
+-- included. Not protected, so this works in combat.
+function ns.SetMasterFont(font)
+	ns.db.masterFont = font ~= ns.DEFAULT_MASTER_FONT and font or nil
+	ns.RefreshAllText()
+	ns.RefreshAuraFrames()
+end
+
+-- Every text drops its own font and follows the master font, buffs and combat text too. Combat text
+-- has no master font of its own (nil is the game's), so it's given the master font itself.
+function ns.ApplyMasterFontToAll()
+	for key in pairs(ns.TextFields) do
+		ns.SetTextStyle(key, "font", nil)
+	end
+	for _, group in ipairs(ns.AuraGroups) do
+		ns.SetAuraOption(group.key, "font", nil)
+		if group.hasListMode then
+			ns.SetAuraListOption(group.key, "nameFont", nil)
+			ns.SetAuraListOption(group.key, "timeFont", nil)
+		end
+	end
+	ns.SetCombatTextOption("font", ns.GetMasterFont())
 end

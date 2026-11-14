@@ -36,6 +36,13 @@ local LIQUIDS = {
 	},
 }
 
+-- How the liquid looks, picked in the settings. Plain keeps the liquid and its surface line but drops
+-- the turning flows.
+ns.OrbStyles = {
+	{ key = "animated", label = "Animated", description = "Swirling liquid, in the power's own style." },
+	{ key = "plain", label = "Plain", description = "A still liquid with no swirls." },
+}
+
 -- Every other power: grey liquid and a single flow, in the power's colour.
 local TINTED_LIQUID = {
 	texture = "OrbLiquid",
@@ -99,12 +106,13 @@ local function CreatePowerOrb(orb)
 		end
 	end)
 
-	local shownToken
+	local shownToken, shownStyle
 	local function ShowLiquid(powerToken)
-		if powerToken == shownToken then
+		local animated = ns.db.orbStyle ~= "plain"
+		if powerToken == shownToken and animated == shownStyle then
 			return
 		end
-		shownToken = powerToken
+		shownToken, shownStyle = powerToken, animated
 		local style = LIQUIDS[powerToken]
 		local r, g, b = 1, 1, 1
 		if not style then
@@ -119,7 +127,7 @@ local function CreatePowerOrb(orb)
 			surface:SetVertexColor(Lighten(r, g, b))
 		end
 		for i, flow in ipairs(flows) do
-			local spec = style.flows[i]
+			local spec = animated and style.flows[i] or nil
 			flow:SetShown(spec ~= nil)
 			flow.speed = spec and spec.speed
 			if spec then
@@ -186,6 +194,10 @@ local function CreatePowerOrb(orb)
 		local isPowerTick = event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT"
 		Update(isPowerTick and SMOOTH or IMMEDIATE)
 	end)
+
+	ns.UpdateOrbLiquid = function()
+		Update(IMMEDIATE)
+	end
 end
 
 local MAX_COMBO_POINTS = 5
@@ -281,8 +293,9 @@ local function CreateManaSpark(orb)
 
 	local function UpdateShown()
 		local _, powerToken = UnitPowerType("player")
-		frame:SetShown(powerToken == "MANA" and GetTime() < ruleEnd)
+		frame:SetShown(ns.db.showManaSpark and powerToken == "MANA" and GetTime() < ruleEnd)
 	end
+	ns.UpdateManaSpark = UpdateShown
 
 	frame:SetScript("OnUpdate", function(self)
 		local remaining = ruleEnd - GetTime()
@@ -359,17 +372,26 @@ local function CreateCastInfo(orb)
 
 	local timeText = ns.CreateText(info, "castTime", orb)
 
-	-- How wide the icon and name are together, measured when a cast starts.
-	local rowWidth = iconSpec.size
+	-- How wide the name is, measured when a cast starts.
+	local nameWidth = 0
 
 	local function GetY(spec)
 		return ns.db.castTextPlacement == "above" and spec.yAbove or spec.y
 	end
 
 	-- Centres the icon and name as one group over or under the orb, and puts the time beside them.
+	-- Without the icon the name starts where the icon would, so it's centred on its own.
 	local function Place()
+		local showIcon = ns.db.showCastIcon
+		local rowWidth = showIcon and (iconSpec.size + nameSpec.x + nameWidth) or nameWidth
+		icon:SetShown(showIcon)
 		icon:ClearAllPoints()
-		icon:SetPoint("CENTER", orb, "CENTER", iconSpec.x + (iconSpec.size - rowWidth) / 2, GetY(iconSpec))
+		icon:SetPoint("LEFT", orb, "CENTER", iconSpec.x - rowWidth / 2, GetY(iconSpec))
+		if showIcon then
+			ns.MoveText(name, "LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
+		else
+			ns.MoveText(name, "LEFT", icon, "LEFT", 0, nameSpec.y)
+		end
 		ns.MoveText(timeText, "CENTER", orb, "CENTER", timeSpec.x, GetY(timeSpec))
 	end
 	Place()
@@ -398,7 +420,7 @@ local function CreateCastInfo(orb)
 		icon:SetTexture(texture)
 		name:SetText(spellName)
 
-		rowWidth = iconSpec.size + nameSpec.x + name:GetStringWidth()
+		nameWidth = name:GetStringWidth()
 		Place()
 
 		UpdateTime()
@@ -437,7 +459,7 @@ local function CreateCastRing(orb)
 		isCasting = false
 		info:Hide()
 		ring:SetIgnoreParentAlpha(false)
-		if swingStart and GetTime() < swingStart + swingDuration then
+		if ns.db.showSwingTimer and swingStart and GetTime() < swingStart + swingDuration then
 			local color = ns.Colors.swing
 			ring:SetReverse(true)
 			ring:SetSwipeColor(color[1], color[2], color[3], 1)
@@ -476,6 +498,13 @@ local function CreateCastRing(orb)
 		ring:SetSwipeColor(color[1], color[2], color[3], 1)
 		ring:SetCooldown(startMS / 1000, (endMS - startMS) / 1000)
 		info:Start(spellName, texture, startMS, endMS, not isFilling)
+	end
+
+	-- Switching the swing timer shows or clears it straight away, unless a cast is showing.
+	ns.UpdateSwingTimer = function()
+		if not isCasting then
+			ShowIdle()
+		end
 	end
 
 	for _, event in ipairs(CAST_EVENTS) do

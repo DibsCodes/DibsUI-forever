@@ -14,13 +14,24 @@ ns.DEFAULT_PROFILE = "Default"
 local PROFILE_DEFAULTS = {
 	locked = true,
 	scale = 1,
-	width = 1,
+	-- Each bar's width as a multiple of its default. The player and target bars are linked to share one
+	-- width, and so are the pet and target of target bars, until one is changed on its own.
+	playerWidth = 1,
+	targetWidth = 1,
+	widthsLinked = true,
 	petWidth = 1,
+	totWidth = 1,
+	outerWidthsLinked = true,
 	showTargetOfTarget = true,
 	showSurnames = false,
 	showHealPrediction = true,
 	showPvPIcon = true,
 	castTextPlacement = "below", -- or "above" the orb
+	showPet = true,
+	orbStyle = "animated", -- or "plain"
+	showManaSpark = true, -- the five second rule
+	showSwingTimer = true,
+	showCastIcon = true,
 	opacityMode = "smart",
 	manualOpacity = 0.6,
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
@@ -85,6 +96,9 @@ local function CleanTextStyles(styles)
 			if not (ns.TextFields[key].values and ns.ValueFormatsByKey[style.format]) then
 				style.format = nil
 			end
+			if not ns.OutlinesByKey[style.outline] then
+				style.outline = nil
+			end
 			if not next(style) then
 				styles[key] = nil
 			end
@@ -101,12 +115,36 @@ local function FillDefaults(settings, defaults)
 	end
 end
 
+-- Before 0.2.0 the player and target bars shared one "width", and the pet and target of target bars
+-- shared "petWidth". Each pair keeps its width, linked, so nothing moves.
+local function MigrateWidths(profile)
+	if profile.playerWidth == nil and type(profile.width) == "number" then
+		profile.playerWidth, profile.targetWidth = profile.width, profile.width
+	end
+	profile.width = nil
+	if profile.totWidth == nil and type(profile.petWidth) == "number" then
+		profile.totWidth = profile.petWidth
+	end
+end
+
+local WIDTH_KEYS = { "playerWidth", "targetWidth", "petWidth", "totWidth" }
+
 -- Fills in what's missing and corrects what's out of range. Returns the profile.
 function ns.CleanProfile(profile)
+	MigrateWidths(profile)
 	FillDefaults(profile, PROFILE_DEFAULTS)
 	profile.scale = Clamp(profile.scale, ns.ScaleRange)
-	profile.width = Clamp(profile.width, ns.WidthRange)
-	profile.petWidth = Clamp(profile.petWidth, ns.WidthRange)
+	for _, key in ipairs(WIDTH_KEYS) do
+		if type(profile[key]) ~= "number" then
+			profile[key] = PROFILE_DEFAULTS[key]
+		end
+		profile[key] = Clamp(profile[key], ns.WidthRange)
+	end
+	for _, key in ipairs({ "widthsLinked", "outerWidthsLinked" }) do
+		if type(profile[key]) ~= "boolean" then
+			profile[key] = PROFILE_DEFAULTS[key]
+		end
+	end
 	if not ns.OpacityModesByKey[profile.opacityMode] then
 		profile.opacityMode = PROFILE_DEFAULTS.opacityMode
 	end
@@ -114,6 +152,17 @@ function ns.CleanProfile(profile)
 		profile.manualOpacity = PROFILE_DEFAULTS.manualOpacity
 	end
 	profile.manualOpacity = Clamp(profile.manualOpacity, ns.OpacityRange)
+	if type(profile.masterFont) ~= "string" then
+		profile.masterFont = nil
+	end
+	for _, key in ipairs({ "showPet", "showManaSpark", "showSwingTimer", "showCastIcon" }) do
+		if type(profile[key]) ~= "boolean" then
+			profile[key] = PROFILE_DEFAULTS[key]
+		end
+	end
+	if profile.orbStyle ~= "animated" and profile.orbStyle ~= "plain" then
+		profile.orbStyle = PROFILE_DEFAULTS.orbStyle
+	end
 	if profile.castTextPlacement ~= "below" and profile.castTextPlacement ~= "above" then
 		profile.castTextPlacement = PROFILE_DEFAULTS.castTextPlacement
 	end
@@ -131,8 +180,8 @@ function ns.LoadSettings()
 
 	-- Before profiles, one set of settings sat at the top level. It becomes the Default profile.
 	if type(saved.profiles) ~= "table" then
-		local profile = { text = saved.text }
-		saved.text = nil
+		local profile = { text = saved.text, width = saved.width }
+		saved.text, saved.width = nil, nil
 		for key in pairs(PROFILE_DEFAULTS) do
 			profile[key], saved[key] = saved[key], nil
 		end
@@ -165,18 +214,38 @@ function ns.LoadSettings()
 	ns.db = saved.profiles[name]
 end
 
+-- side is -1 for the left wing (player) and 1 for the right (target).
+local function WidthSetting(spec, side)
+	return spec.widthSettings[side < 0 and 1 or 2]
+end
+
 -- How much longer the width setting makes a bar, in UI units. A negative value means shorter.
-function ns.GetBarGrowth(spec)
-	return (ns.db[spec.widthSetting] - 1) * (spec.fillOuter - spec.fillInner)
+function ns.GetBarGrowth(spec, side)
+	return (ns.db[WidthSetting(spec, side)] - 1) * (spec.fillOuter - spec.fillInner)
 end
 
--- How far a bar moves away from the orb to stay attached to the bar it follows.
-function ns.GetBarShift(spec)
-	return spec.followsHealth and ns.GetBarGrowth(Layout.health) or 0
+-- How far a bar moves away from the orb to stay attached to the bar it follows, on the same side.
+function ns.GetBarShift(spec, side)
+	return spec.followsHealth and ns.GetBarGrowth(Layout.health, side) or 0
 end
 
+-- How far from the orb's centre a bar's outer tip reaches, with its width and shift.
+function ns.GetBarReach(spec, side)
+	return spec.tip + ns.GetBarGrowth(spec, side) + ns.GetBarShift(spec, side)
+end
+
+-- How far the frames reach on one side: the pet bar on the left, and on the right the target of target
+-- bar while it's shown, or else the target bar.
+function ns.GetWingReach(side)
+	if side < 0 or ns.db.showTargetOfTarget then
+		return ns.GetBarReach(Layout.pet, side)
+	end
+	return ns.GetBarReach(Layout.health, side)
+end
+
+-- The root stays centred on the orb, so it's as wide as the longer health bar on both sides.
 function ns.GetRootWidth()
-	return 2 * (Layout.health.tip + ns.GetBarGrowth(Layout.health) + Layout.rootMargin)
+	return 2 * (math.max(ns.GetBarReach(Layout.health, -1), ns.GetBarReach(Layout.health, 1)) + Layout.rootMargin)
 end
 
 local function ApplyPlacement()
@@ -224,17 +293,12 @@ local function UpdateMover()
 	ns.UpdateCombatTextMover()
 end
 
--- The root stays symmetrical around the orb and only covers the health bars, so the pet and target
--- of target bars hang out past its edges by this much.
-function ns.GetOuterBarOverhang()
-	return Layout.pet.tip + ns.GetBarGrowth(Layout.pet) - Layout.health.tip
-end
-
+-- The handle covers everything from the pet bar's tip to the far tip on the right, which can differ
+-- now each side has its own widths.
 local function LayoutMover()
-	local overhang = ns.GetOuterBarOverhang()
 	mover:ClearAllPoints()
-	mover:SetPoint("TOPLEFT", root, "TOPLEFT", -overhang, 0)
-	mover:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", ns.db.showTargetOfTarget and overhang or 0, 0)
+	mover:SetPoint("TOPLEFT", root, "TOP", -(ns.GetWingReach(-1) + Layout.rootMargin), 0)
+	mover:SetPoint("BOTTOMRIGHT", root, "BOTTOM", ns.GetWingReach(1) + Layout.rootMargin, 0)
 end
 
 -- Left click on the bars targets, so dragging needs its own handle above them while unlocked.
@@ -292,24 +356,69 @@ function ns.SetScale(scale)
 	return ns.db.scale
 end
 
--- Returns the width in effect, which is unchanged during combat.
-function ns.SetWidth(width)
-	if not InCombatLockdown() then
-		ns.db.width = Clamp(math.floor(width * 100 + 0.5) / 100, ns.WidthRange)
-		root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
-		ns.UpdateBarWidths()
-	end
-	return ns.db.width
+-- Widths ---------------------------------------------------------------------------------------------
+
+-- The frames with a width of their own, by the name the settings use, and the pair each belongs to.
+-- The first of a pair is the one the other takes its width from when they're linked again.
+local FRAME_WIDTHS = { player = "playerWidth", target = "targetWidth", pet = "petWidth", tot = "totWidth" }
+local WIDTH_PAIRS = {
+	main = { "player", "target", linked = "widthsLinked" },
+	outer = { "pet", "tot", linked = "outerWidthsLinked" },
+}
+local PAIR_OF = { player = "main", target = "main", pet = "outer", tot = "outer" }
+
+-- Every bar, the root and the drag handle follow the widths. They move secure frames, so not in combat.
+local function ApplyWidths()
+	root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
+	ns.UpdateBarWidths()
+	LayoutMover()
 end
 
--- Returns the width of the pet and target of target bars in effect, which is unchanged during combat.
-function ns.SetPetWidth(width)
+local function RoundWidth(width)
+	return Clamp(math.floor(width * 100 + 0.5) / 100, ns.WidthRange)
+end
+
+function ns.GetFrameWidth(frame)
+	return ns.db[FRAME_WIDTHS[frame]]
+end
+
+function ns.IsWidthLinked(pair)
+	return ns.db[WIDTH_PAIRS[pair].linked]
+end
+
+-- One frame's own width, from its own tab. Changing one of a linked pair unlinks it, so the other
+-- keeps its width. Returns the width in effect, which is unchanged during combat.
+function ns.SetFrameWidth(frame, width)
 	if not InCombatLockdown() then
-		ns.db.petWidth = Clamp(math.floor(width * 100 + 0.5) / 100, ns.WidthRange)
-		ns.UpdateBarWidths()
-		LayoutMover()
+		ns.db[FRAME_WIDTHS[frame]] = RoundWidth(width)
+		ns.db[WIDTH_PAIRS[PAIR_OF[frame]].linked] = false
+		ApplyWidths()
 	end
-	return ns.db.petWidth
+	return ns.GetFrameWidth(frame)
+end
+
+-- Both frames of a linked pair at once, from the General tab. Returns the width in effect.
+function ns.SetPairWidth(pair, width)
+	local frames = WIDTH_PAIRS[pair]
+	if not InCombatLockdown() then
+		width = RoundWidth(width)
+		ns.db[FRAME_WIDTHS[frames[1]]], ns.db[FRAME_WIDTHS[frames[2]]] = width, width
+		ApplyWidths()
+	end
+	return ns.GetFrameWidth(frames[1])
+end
+
+-- Linking a pair again gives the second frame the first one's width.
+function ns.SetWidthLinked(pair, linked)
+	if InCombatLockdown() then
+		return
+	end
+	local frames = WIDTH_PAIRS[pair]
+	ns.db[frames.linked] = linked
+	if linked then
+		ns.db[FRAME_WIDTHS[frames[2]]] = ns.GetFrameWidth(frames[1])
+		ApplyWidths()
+	end
 end
 
 function ns.SetTargetOfTargetShown(shown)
@@ -345,6 +454,7 @@ function ns.ApplyProfile()
 	root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
 	ApplyPlacement()
 	ns.UpdateTargetOfTargetShown()
+	ns.UpdatePetShown()
 	ns.UpdateBarWidths()
 	LayoutMover()
 	UpdateMover()
@@ -353,6 +463,7 @@ function ns.ApplyProfile()
 	ns.UpdateHealPredictionShown()
 	ns.UpdatePvPIndicator()
 	ns.UpdateCastTextPlacement()
+	ns.UpdateOrb()
 	ns.RefreshCombatText()
 end
 
@@ -366,4 +477,41 @@ end
 function ns.SetSurnamesShown(shown)
 	ns.db.showSurnames = shown
 	ns.RefreshAllText()
+end
+
+-- The pet bar's click area is a secure button, so this waits for combat to end like the other frames.
+function ns.SetPetShown(shown)
+	if not InCombatLockdown() then
+		ns.db.showPet = shown
+		ns.UpdatePetShown()
+	end
+end
+
+-- The orb and cast ring settings aren't protected, so they all work in combat.
+
+function ns.SetOrbStyle(style)
+	ns.db.orbStyle = style
+	ns.UpdateOrbLiquid()
+end
+
+function ns.SetManaSparkShown(shown)
+	ns.db.showManaSpark = shown
+	ns.UpdateManaSpark()
+end
+
+function ns.SetSwingTimerShown(shown)
+	ns.db.showSwingTimer = shown
+	ns.UpdateSwingTimer()
+end
+
+function ns.SetCastIconShown(shown)
+	ns.db.showCastIcon = shown
+	ns.UpdateCastTextPlacement()
+end
+
+-- After switching profiles.
+function ns.UpdateOrb()
+	ns.UpdateOrbLiquid()
+	ns.UpdateManaSpark()
+	ns.UpdateSwingTimer()
 end

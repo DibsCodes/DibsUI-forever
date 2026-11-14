@@ -16,7 +16,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - While you're flagged for PvP, your faction's icon under the bar's outer corner, with the time left before the flag drops. It can be turned off in the settings
 
 **Pet bar (far left)**
-- Sits against the end of the player bar, and only shows when you have a pet
+- Sits against the end of the player bar, and only shows when you have a pet. It can be turned off in the settings
 - Name and yellow level above the bar
 - Current and maximum health in the center, while your mouse is over the bar
 - Happiness face at the bottom left for hunter pets, with Blizzard's tooltip
@@ -44,7 +44,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Fills from the bottom with your power, with the amount in the middle
 - Mana is a deep blue liquid that slowly swirls, and rage is thick, dark blood. Other power types are a liquid in their own color
 - A thin glowing line marks the top of the liquid
-- Druids in bear or cat form see their mana percentage under the rage or energy, in smaller blue text. It can be turned off or changed in the Text tab as "Orb: Druid mana"
+- Druids in bear or cat form see their mana percentage under the rage or energy, in smaller blue text. It can be turned off or changed on the Power Orb and Cast Ring page
 - Numbers are shortened: `999`, `1.2k`, `12k`, `1.2m`
 - Every text on the bars and orb can be changed or turned off in the settings
 
@@ -60,8 +60,8 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 **Cast ring**
 - Fills clockwise around the orb while casting, and drains clockwise while channeling
 - Shows a round spell icon, the spell name and `current / total` time below the orb, or above it if you prefer
-- The spell name and time have their own font, size and color settings in the Text tab
-- Runs in grey for your main hand swing timer when you aren't casting
+- The spell name and time have their own font, outline, size and color settings, and the icon can be turned off
+- Runs in grey for your main hand swing timer when you aren't casting. It can be turned off
 
 **Player buffs**
 - Replace Blizzard's buff frame with two frames: long buffs and short buffs
@@ -136,44 +136,43 @@ To install from this repository instead, download it as a zip, rename the folder
 
 When you log in, DibsUI says in chat that it's loaded and how to open the settings.
 
-Type `/dui lock` or `/dibsui lock` to lock or unlock the frames without opening the settings. Like the Unlock frames switch, it can't be used during combat.
+Type `/dui lock` or `/dibsui lock` to lock or unlock the frames without opening the settings. Like the Unlock frames button, it can't be used during combat.
 
-Type `/dui` or `/dibsui`, or click the minimap button, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns, and has four tabs.
+Type `/dui` or `/dibsui`, click the minimap button, or open the game's Options, AddOns, DibsUI and press **Open DibsUI settings**, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns, with its pages listed down the left.
 
-Drag the bottom right corner to resize the window, and it remembers its size. Each tab's sections flow into as many columns as fit, up to three, and scroll with the mouse wheel or the scroll bar at the right when they don't all fit. On a narrow window the tabs move below the switches at the top.
+Drag the bottom right corner to resize the window, and it remembers its size and the page you had open. Each page's sections flow into as many columns as fit, up to three, and scroll with the mouse wheel or the scroll bar at the right when they don't all fit.
 
-At the top of the window, on every tab:
+At the top of the window, on every page:
 
 | Setting | What it does |
 |---|---|
-| Unlock frames | Shows drag handles for the frames, the long buffs, the player debuffs, the target buffs and the combat text. Bars don't respond to clicks until you switch it off again. |
+| Unlock frames / Lock frames | Shows or hides drag handles for the frames, the long buffs, the player debuffs, the target buffs and the combat text. The button says which it will do. Bars don't respond to clicks while unlocked. |
 | Show minimap button | Turns the minimap button on or off. |
 
 ### General
 
-**Frames**
+**Look & feel**
 
 | Setting | What it does |
 |---|---|
-| Show target of target | Turns the target of target bar on or off. |
+| Show target of target | Turns the target of target bar on or off. The same switch is on the Target Frame page. |
 | Show last names | Shows last names beside first names, smaller and off-white. |
 | Show incoming heals and absorbs | Turns heal and absorb prediction on the player and target bars on or off. |
-| Show PvP icon and timer | Turns the PvP icon and its countdown under the player bar on or off. |
+| Show PvP timer | Turns the PvP icon and its countdown under the player bar on or off. |
+| Master font | The font every text uses unless it has one of its own, buff texts included. It starts as Barlow Semi Condensed Black, which comes with DibsUI. |
+| Use for all text | Clears every text's own font, so they all use the master font. Combat text is given the master font too. |
 
-**Scale and width**
+**Size and position**
 
 | Setting | What it does |
 |---|---|
 | Scale | Scales everything from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
-| Width | Sets the length of the player and target bars from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
-| Pet and target of target width | Sets the length of both of those bars from 0.50 to 2.00. Use the slider or its arrows, or type an exact value and press Enter. |
-
-**Position**
-
-| Setting | What it does |
-|---|---|
+| Width | Sets the length of the player and target bars together, from 0.50 to 2.00, while they're linked. |
+| Pet and target of target width | Sets the length of both of those bars together, from 0.50 to 2.00, while they're linked. |
 | Center horizontally | Centers the orb on the screen, keeping its height. The pet bar doesn't change where the center is. |
-| Up, Down, Left, Right | Moves the frames one screen pixel. These and Center work whether or not the position is locked. |
+| Up, Down, Left, Right | Moves the frames one screen pixel. These and Center work whether or not the frames are locked. |
+
+The chain beside each width shows whether the pair is linked. Changing one bar's width on its own page unlinks the pair, and the width here greys out until you link them again by clicking the chain. Linking again gives the target bar the player bar's width, and the target of target bar the pet bar's.
 
 **Opacity**
 
@@ -184,31 +183,65 @@ At the top of the window, on every tab:
 
 Unlocked frames always show at 100%, so you can see them to move them.
 
-**Cast**
+### Player & Pet Frame
+
+| Setting | What it does |
+|---|---|
+| Player bar width | The player bar's own length, from 0.50 to 2.00. Changing it unlinks it from the target bar. |
+| Show pet frame | Turns the pet bar on or off. |
+| Pet bar width | The pet bar's own length. Changing it unlinks it from the target of target bar. |
+
+Under them, **Player texts** and **Pet texts** edit those bars' texts, as described under Texts below.
+
+### Target Frame
+
+| Setting | What it does |
+|---|---|
+| Target bar width | The target bar's own length, and its power bar's. Changing it unlinks it from the player bar. |
+| Show target of target | Turns the target of target bar on or off. |
+| Target of target width | The target of target bar's own length. Changing it unlinks it from the pet bar. |
+
+Under them, **Target texts** (the target bar and its power bar) and **Target of target texts**.
+
+### Power Orb and Cast Ring
+
+**Power orb**
+
+| Setting | What it does |
+|---|---|
+| Liquid | **Animated**, the swirling liquid in the power's own style, or **Plain**, a still liquid with no swirls. |
+| Show five second rule timer | Turns the mana spark on or off. |
+| Show druid mana in bear and cat form | Turns the druid mana under the orb on or off. It's the same as that text's Show switch. |
+
+Under them, **Orb text** edits the power and druid mana texts.
+
+**Cast ring**
 
 | Setting | What it does |
 |---|---|
 | Spell name and time | Below the orb or above it. Either way the spell name sits over the time. |
+| Show swing timer | Turns the grey main hand swing on the ring on or off. |
+| Show latency, Animated ring, Show global cooldown | Not built yet, so they're greyed out. |
 
-The spell name's and time's font, size and color are in the Text tab, as **Cast: Spell name** and **Cast: Time**.
+Under them, **Cast text** edits the spell name and time, with **Show spell icon beside the name**.
 
-### Text
+### Texts
 
-Pick a spot from **Text to edit**. Spots are named by where they sit, such as "Player bar: Left side" or "Orb: Center", then change it in the sections below: Display, Font and size, Position and Color.
+Each frame's page lists its own texts. Pick one from **Text to edit**, then change it in the sections below: Display, Font, Position and Color.
 
 | Setting | What it does |
 |---|---|
-| Show | Turns the spot on or off. |
-| Only on mouseover | Shows the spot only while your mouse is over its bar, or over the orb for the orb and cast text. |
-| Shows | What a health or power spot displays. Names, levels and cast text always show the same thing. |
-| Font | The game's fonts, plus any fonts from addons that use LibSharedMedia. Each one is shown in its own typeface. |
+| Show | Turns the text on or off. |
+| Only on mouseover | Shows the text only while your mouse is over its bar, or over the orb for the orb and cast text. |
+| Shows | What a health or power text displays. Names, levels and cast text always show the same thing. |
+| Font | **Master font**, or one of the game's fonts or any from addons that use LibSharedMedia. Each one is shown in its own typeface. |
+| Outline | None, Outline or Thick outline. |
 | Size | From 6 to 40. |
-| X offset, Y offset | Moves the spot from where it normally sits, from -100 to 100. Positive Y is up. |
-| Custom color | Switch it on and click the swatch to pick a color. Switched off, the spot keeps its usual color, such as a class or difficulty color. In name and level spots, the level stays yellow. |
-| Reset this text | Puts everything about the spot back to its defaults. |
-| Use font for all text | Gives every spot the font of the one you've picked, leaving everything else alone. |
+| X offset, Y offset | Moves the text from where it normally sits, from -100 to 100. Positive Y is up. |
+| Custom color | Switch it on and click the swatch to pick a color. Switched off, the text keeps its usual color, such as a class or difficulty color. In name and level texts, the level stays yellow. |
+| Reset this text | Puts everything about the text back to its defaults. |
 
-A health or power spot can show:
+A health or power text can show:
 
 | Option | Example |
 |---|---|
@@ -220,9 +253,9 @@ A health or power spot can show:
 
 The defaults are the layout above: missing health on the player bar's left side, percent and current on the target's, and the pet's current / max on mouseover.
 
-### Buffs/Debuffs
+### Buffs & Debuffs
 
-The groups are listed down the left, each with its own switch. Click one to change its settings.
+The groups are listed down the left, each with its own switch. Click one to change its settings, which are in the order Layout, Position, Icons, then the texts.
 
 **Show test buffs** fills every group with sample buffs, so you can see the layout as you change it. Target debuffs show while you have a target, and target buffs show either way. It turns off when you reload.
 
@@ -270,7 +303,7 @@ The same settings as the long buffs. They start in List mode, attached to the pl
 
 Sizes and offsets follow your UI scale. The short buffs and target debuffs also follow DibsUI's Scale setting, since they sit on the bars.
 
-### Combat text
+### Incoming Combat Text
 
 These change the game's own scrolling combat text, which only shows while it's switched on in the game's options. Which kinds of text show, and whether they scroll up, down or in an arc, are set there too. The damage numbers over enemies are drawn by the game, so addons can't change them.
 
@@ -306,7 +339,7 @@ Profiles are shared by every character on your account, and each character remem
 
 The minimap button's settings are the same in every profile.
 
-Frame, position and profile settings can't be changed during combat, but text, last name, heal prediction, PvP icon, opacity, cast text, buff, combat text and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
+Frame, width, position, pet frame, target of target and profile settings can't be changed during combat, but text, font, last name, heal prediction, PvP icon, opacity, orb, cast, buff, combat text and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
 
 ## Status
 
@@ -349,4 +382,4 @@ The buff frames are newer still: the simulator can't show real buffs in Blizzard
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The bundled font, Barlow Semi Condensed Black, is by the Barlow Project Authors under the [SIL Open Font License](Media/Fonts/OFL.txt).

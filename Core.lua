@@ -38,24 +38,25 @@ ns.Layout = {
 	-- fillInner/fillOuter: StatusBar span, measured from the orb centre.
 	-- fillHeight: inside of the double border. capWidth: how far the slanted cap reaches past the fill.
 	-- wedgeWidth/wedgeArt: the piece joining the fill's straight inner edge to the shape of the bar's inner end.
-	-- widthSetting: the saved setting that stretches the bar.
+	-- widthSettings: the saved settings that stretch the bar, on the left wing then the right.
 	health = {
 		yCenter = 31, height = 34, tip = 245, hitInner = 52,
 		fillInner = 68, fillOuter = 224.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 14, wedgeArt = "BarFillInner",
-		back = "BarHealthBack", frame = "BarHealthFrame", art = BAR_ART, widthSetting = "width",
+		back = "BarHealthBack", frame = "BarHealthFrame", art = BAR_ART, widthSettings = { "playerWidth", "targetWidth" },
 	},
 	power = {
 		yCenter = 2, height = 18, tip = 188, hitInner = 66,
 		fillInner = 70, fillOuter = 176.66, fillHeight = 12, capWidth = 6.35,
-		back = "BarPowerBack", frame = "BarPowerFrame", art = BAR_ART, widthSetting = "width",
+		back = "BarPowerBack", frame = "BarPowerFrame", art = BAR_ART, widthSettings = { "playerWidth", "targetWidth" },
 	},
 	-- Used by the pet bar and, mirrored, the target of target bar.
-	-- Distances assume the health bar beside it at its default width; followsHealth moves this bar along with that bar's tip.
+	-- Distances assume the health bar beside it at its default width; followsHealth moves this bar along with the tip of
+	-- the health bar on its own side.
 	-- hitInset: the click area stops short of the slanted inner end, which reaches under the player bar's tip.
 	pet = {
 		yCenter = 31, height = 34, tip = 369, hitInner = 231, hitInset = 18,
 		fillInner = 251.41, fillOuter = 348.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 13.76, wedgeArt = "BarFillSlant",
-		back = "BarPetBack", frame = "BarPetFrame", art = PET_ART, widthSetting = "petWidth", followsHealth = true,
+		back = "BarPetBack", frame = "BarPetFrame", art = PET_ART, widthSettings = { "petWidth", "totWidth" }, followsHealth = true,
 	},
 }
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0
+
+- A rebuilt settings window, with DibsUI's logo at the top left and its pages listed down the left: General, Player & Pet Frame, Target Frame, Power Orb and Cast Ring, Buffs & Debuffs, Incoming Combat Text and Profiles. Each frame's page has its own text settings, so the Text tab is gone
+- DibsUI is now listed in the game's Options under AddOns, with a button that opens its settings
+- The player and target bars can have different widths, and so can the pet and target of target bars. Each pair is linked by default; changing one bar on its own page unlinks it, and the chain beside the width links them again. Your current widths carry over, still linked
+- A master font, which every text uses unless it has its own, with a button to use it for all text, buffs and combat text included. DibsUI now comes with Barlow Semi Condensed Black, and uses it by default
+- Every text can now have its own outline: none, outline or thick outline
+- New switches: Show pet frame, Show five second rule timer, Show swing timer, and the spell icon beside the cast name. The orb's liquid can be Animated or Plain
+- The Unlock frames switch is now a button that says Lock frames while they're unlocked
+- Buff group settings are in the order Layout, Position, Icons, then the texts
+- The minimap button shows DibsUI's logo
+- Fixed buttons in the settings window losing their text while the mouse is over them
+
 ## 0.1.6
 
 - Fixed incoming heals and absorbs not showing on the player and target bars in game since 0.1.2. The masks that hide the empty pieces' slanted ends were hiding the heals and absorbs entirely. They now work like the orb's masks, so heals and absorbs show and the bar's end still matches the fill below 100% opacity

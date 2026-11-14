@@ -712,9 +712,11 @@ local function ApplyOwnSkin(parts)
 	parts.count:SetPoint("BOTTOMRIGHT", -1, 2)
 end
 
--- A font that can't be loaded any more falls back to the default.
+-- No font of its own means the master font. A font that can't be loaded any more falls back to the
+-- master font, then the game's.
 local function SetFontStyle(fontString, font, size)
-	if not fontString:SetFont(font or ns.Text.font, size, "OUTLINE") then
+	if not fontString:SetFont(font or ns.GetMasterFont(), size, "OUTLINE")
+		and not fontString:SetFont(ns.GetMasterFont(), size, "OUTLINE") then
 		fontString:SetFont(ns.Text.font, size, "OUTLINE")
 	end
 end
@@ -776,7 +778,7 @@ local function StyleParts(group, mode, parts)
 	if parts.stealable then
 		parts.stealable:SetSize(size * STEALABLE_SCALE, size * STEALABLE_SCALE)
 	end
-	parts.count:SetFont(ns.Text.font, math.max(math.floor(size * 0.4), 8), "OUTLINE")
+	SetFontStyle(parts.count, nil, math.max(math.floor(size * 0.4), 8))
 	parts.time:ClearAllPoints()
 	parts.name:ClearAllPoints()
 	if isList then
