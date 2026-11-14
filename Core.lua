@@ -217,6 +217,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateOrb()
 			ns.CreateMover()
 			ns.CreateAuraFrames()
+			ns.CreateCombatText()
 			ns.CreateOpacity()
 			ns.CreateMinimapButton()
 		end

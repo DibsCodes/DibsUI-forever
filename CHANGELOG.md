@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- The game's scrolling combat text now rises from just above the player bar, or above your short buffs while you have any, instead of up the middle of the screen. A burst of hits stacks upwards without covering the bar
+- A new Combat text tab: switch the move on or off, attach it to the player bar or drag it anywhere while frames are unlocked, nudge it with offsets, and pick its font, outline and scale
+- Custom colors for melee hits, spell hits, heals, and misses, blocks and resists
+- None of this taints Blizzard's combat text, which handles amounts addons can't read
+
 ## 0.1.3
 
 - Druids in bear or cat form see their mana percentage under the rage or energy in the orb, in smaller blue text. It's in the Text tab as "Orb: Druid mana", where it can be turned off, shown only on mouseover, set to show other values, moved and restyled

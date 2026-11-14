@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: DibsUI
 ## Author: Dibs
-## Version: 0.1.3
+## Version: 0.1.4
 ## Notes: Replaces the player and target frames with a winged power orb layout.
 ## SavedVariables: DibsUIDB
 ## OptionalDeps: Masque
@@ -13,6 +13,7 @@ Position.lua
 Profiles.lua
 Bars.lua
 Indicators.lua
+CombatText.lua
 Orb.lua
 Opacity.lua
 SpellDurations.lua

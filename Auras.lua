@@ -1192,6 +1192,7 @@ local function UpdateGroup(group)
 	end
 	StyleContainerButtons(group)
 	SizeHolder(group, layout, count)
+	group.count = count
 end
 
 -- Moving -----------------------------------------------------------------------------------------------
@@ -1482,6 +1483,16 @@ local function CreateGroup(key, label, parent)
 	end)
 	groups[key] = group
 	return group
+end
+
+-- The top of the player's short buffs, and the scale it's measured in, while any are showing; nil
+-- otherwise. In combat the count is the last one that could be read, as for the frame's own size.
+function ns.GetShortBuffsTop()
+	local group = groups.playerShortBuffs
+	if not (group and group.settings.enabled and group.holder:IsVisible() and (group.count or 0) > 0) then
+		return
+	end
+	return group.holder:GetTop(), group.holder:GetEffectiveScale()
 end
 
 function ns.CreateAuraFrames()

@@ -108,6 +108,13 @@ Pick a mode in the settings. Smart, the default, follows what's happening:
 
 **Full** is always 100%, and **Manual** is always the opacity you set. Rage idles at 0, and other power types idle at full. Casts always show at 100%, whatever the mode.
 
+**Scrolling combat text**
+- The game's own scrolling combat text (the damage, heals and procs happening to you) rises from just above the player bar, centred on it, instead of up the middle of the screen
+- While you have short buffs, it starts above them instead
+- A burst of hits stacks upwards and never covers the bar
+- It can be dragged anywhere while frames are unlocked, restyled with any font, outline and scale, and given your own colors for melee hits, spell hits, heals, and misses, blocks and resists
+- It's all done without tainting Blizzard's combat text, so it keeps working in combat
+
 **Last names**
 - Can be switched on in the settings, to show "First Last" on the player, target and target of target
 - The last name is off-white and 20% smaller than the first, and the player's level follows it
@@ -139,7 +146,7 @@ At the top of the window, on every tab:
 
 | Setting | What it does |
 |---|---|
-| Unlock frames | Shows drag handles for the frames, the long buffs, the player debuffs and the target buffs. Bars don't respond to clicks until you switch it off again. |
+| Unlock frames | Shows drag handles for the frames, the long buffs, the player debuffs, the target buffs and the combat text. Bars don't respond to clicks until you switch it off again. |
 | Show minimap button | Turns the minimap button on or off. |
 
 ### General
@@ -263,6 +270,31 @@ The same settings as the long buffs. They start in List mode, attached to the pl
 
 Sizes and offsets follow your UI scale. The short buffs and target debuffs also follow DibsUI's Scale setting, since they sit on the bars.
 
+### Combat text
+
+These change the game's own scrolling combat text, which only shows while it's switched on in the game's options. Which kinds of text show, and whether they scroll up, down or in an arc, are set there too. The damage numbers over enemies are drawn by the game, so addons can't change them.
+
+**Position**
+
+| Setting | What it does |
+|---|---|
+| Move combat text | Moves the combat text from the middle of the screen to DibsUI's spot. Switched off, it stays where the game puts it. |
+| Attach to | **Player bar** rises from above the player bar, and above your short buffs while you have any. **Where you drag it** stays where you dropped it. Dragging the **Combat text** box while frames are unlocked switches to this. |
+| X offset, Y offset | Moves it from where it's attached, from -300 to 300. |
+| Reset position | Goes back to the player bar with no offsets. |
+
+**Font and scale**
+
+| Setting | What it does |
+|---|---|
+| Font | The game's fonts, plus any fonts from addons that use LibSharedMedia. |
+| Outline | None (the game's own, with a shadow), Outline or Thick outline. |
+| Scale | From 0.50 to 2.00. Scales the text, the space between lines and how far they rise, all together. |
+
+**Colors**
+
+Melee hits, Spell hits, Heals, and Misses, blocks and resists each have a switch and a swatch. Switch one on and click its swatch to pick a color. Switched off, that kind keeps the game's color. Crits count with their kind, and a new color shows from the next hit.
+
 ### Profiles
 
 Profiles are shared by every character on your account, and each character remembers which one it uses. Your settings start in the **Default** profile, and new characters use it too.
@@ -274,7 +306,7 @@ Profiles are shared by every character on your account, and each character remem
 
 The minimap button's settings are the same in every profile.
 
-Frame, position and profile settings can't be changed during combat, but text, last name, heal prediction, PvP icon, opacity, cast text, buff and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
+Frame, position and profile settings can't be changed during combat, but text, last name, heal prediction, PvP icon, opacity, cast text, buff, combat text and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
 
 ## Status
 
@@ -285,6 +317,8 @@ So far DibsUI has been tested in the UIForever simulator and with offline checks
 Heal and absorb prediction hasn't been checked with real heals and shields yet, since the simulator doesn't calculate them.
 
 Druid mana under the orb was checked in the simulator in caster, bear and cat form, but not yet in-game.
+
+Scrolling combat text was checked in the simulator with Blizzard's own combat text and made-up hits: its position above the bar and the short buffs, dragging, font, outline and scale. The simulator can't send real combat text events, so the colors were only checked by calling DibsUI's handler directly, and need checking in-game.
 
 The resting Zzz and the PvP icon and countdown were checked in the simulator by setting the resting and PvP state by hand. Real resting areas and real PvP flags still need checking in-game.
 
@@ -308,6 +342,9 @@ The buff frames are newer still: the simulator can't show real buffs in Blizzard
 - With player debuffs on, Blizzard's debuff frame is hidden, along with the private auras some boss fights show on it
 - In List mode, names longer than the space beside the icons run past the frame
 - The long buffs' drag handle is sized from the buffs you had the last time they could be read
+- Combat text only moves above short buffs you had before a fight. A short buff gained mid-fight, such as a proc, doesn't move it until the fight ends, since buffs can't be read in combat
+- With combat text set to scroll down in the game's options, it falls onto its spot rather than rising from it
+- Spell icons can't be shown beside combat text: the game doesn't tell addons which spell hit you
 - Absorbs are hard to tell apart from health on blue bars, such as a shaman's
 
 ## License

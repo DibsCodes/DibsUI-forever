@@ -119,6 +119,7 @@ function ns.CleanProfile(profile)
 	end
 	profile.text = CleanTextStyles(profile.text)
 	profile.auras = ns.CleanAuraSettings(profile.auras)
+	profile.combatText = ns.CleanCombatTextSettings(profile.combatText, profile)
 	return profile
 end
 
@@ -220,6 +221,7 @@ local function UpdateMover()
 	mover:SetShown(not ns.db.locked and not InCombatLockdown())
 	ns.UpdateOpacity()
 	ns.UpdateAuraMovers()
+	ns.UpdateCombatTextMover()
 end
 
 -- The root stays symmetrical around the orb and only covers the health bars, so the pet and target
@@ -351,6 +353,7 @@ function ns.ApplyProfile()
 	ns.UpdateHealPredictionShown()
 	ns.UpdatePvPIndicator()
 	ns.UpdateCastTextPlacement()
+	ns.RefreshCombatText()
 end
 
 -- Not protected, so this works in combat, even mid-cast.

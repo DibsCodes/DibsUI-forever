@@ -1284,10 +1284,195 @@ local function BuildAuras(content, context, relayout)
 	return { Sync = refresh, SetCombatLocked = function() end, Layout = Layout }
 end
 
+local COMBAT_TEXT_ATTACH = {
+	{ key = "player", label = "Player bar",
+		hint = "Rises from above the player bar, and above your short buffs while you have any." },
+	{ key = "free", label = "Where you drag it",
+		hint = "Stays where you dropped it." },
+}
+
+-- Blizzard's scrolling combat text: where it rises from, its font and scale, and colors for kinds of
+-- hits. None of it is protected, so it all works in combat.
+local function BuildCombatText(content, _, relayout)
+	local refresh
+
+	local positionCard = CreateCard(content, "Position")
+	local moveRow = positionCard:Add(CreateToggleRow(positionCard, "Move combat text", function(checked)
+		ns.SetCombatTextOption("enabled", checked)
+		refresh()
+	end))
+	local attachRow = positionCard:Add(CreateDropdownRow(positionCard, "Attach to"))
+	local attachHint = positionCard:Add(CreateLabel(positionCard, "GameFontDisableSmall", ""))
+	attachHint:SetWordWrap(true)
+	local dragHint = positionCard:Add(CreateLabel(positionCard, "GameFontDisableSmall",
+		"Switch on Unlock frames to drag the Combat text box. Dropping it keeps it where you put it."), 4)
+	dragHint:SetWordWrap(true)
+	local function OffsetRow(text, key)
+		return positionCard:Add(CreateSliderRow(positionCard, text, ns.CombatTextOffsetRange, FormatSize,
+			function() return ns.GetCombatTextOption(key) end,
+			function(value)
+				ns.SetCombatTextOption(key, math.floor(value + 0.5))
+			end), 4)
+	end
+	local offsetX = OffsetRow("X offset", "offsetX")
+	local offsetY = OffsetRow("Y offset", "offsetY")
+	local reset = positionCard:Add(CreateButton(positionCard, "Reset position", 134), 6, true)
+	reset:SetScript("OnClick", function()
+		ns.ResetCombatTextPosition()
+		refresh()
+	end)
+
+	attachRow.dropdown:SetupMenu(function(_, root)
+		for _, attach in ipairs(COMBAT_TEXT_ATTACH) do
+			root:CreateRadio(attach.label,
+				function() return ns.GetCombatTextOption("attach") == attach.key end,
+				function()
+					ns.SetCombatTextOption("attach", attach.key)
+					refresh()
+				end, attach)
+		end
+	end)
+	attachRow.dropdown:SetSelectionTranslator(function(selection)
+		return selection.data.label
+	end)
+
+	local fontCard = CreateCard(content, "Font and scale")
+	local fontRow = fontCard:Add(CreateDropdownRow(fontCard, "Font"))
+	local outlineRow = fontCard:Add(CreateDropdownRow(fontCard, "Outline"))
+	local scale = fontCard:Add(CreateSliderRow(fontCard, "Scale", ns.CombatTextScaleRange, FormatScale,
+		function() return ns.GetCombatTextOption("scale") end,
+		function(value)
+			ns.SetCombatTextOption("scale", math.floor(value * 100 + 0.5) / 100)
+		end))
+	local scaleHint = fontCard:Add(CreateLabel(fontCard, "GameFontDisableSmall",
+		"Scale changes the text, the space between lines and how far they rise, all together."), 2)
+	scaleHint:SetWordWrap(true)
+
+	fontRow.dropdown:SetupMenu(function(_, root)
+		root:SetScrollMode(360)
+		for _, font in ipairs(ns.GetFonts()) do
+			local radio = root:CreateRadio(font.name,
+				function() return SameFont(ns.GetCombatTextOption("font") or ns.Text.font, font.path) end,
+				function()
+					ns.SetCombatTextOption("font", not SameFont(font.path, ns.Text.font) and font.path or nil)
+					refresh()
+				end, font)
+			radio:AddInitializer(function(button)
+				button.fontString:SetFontObject(GetPreviewFont(font.path))
+			end)
+		end
+	end)
+	fontRow.dropdown:SetDefaultText("Friz Quadrata")
+
+	outlineRow.dropdown:SetupMenu(function(_, root)
+		for _, outline in ipairs(ns.CombatTextOutlines) do
+			root:CreateRadio(outline.label,
+				function() return ns.GetCombatTextOption("outline") == outline.key end,
+				function()
+					ns.SetCombatTextOption("outline", outline.key)
+					refresh()
+				end, outline)
+		end
+	end)
+	outlineRow.dropdown:SetSelectionTranslator(function(selection)
+		return selection.data.label
+	end)
+
+	-- One switch per kind of hit, with a swatch beside it. Switched off, the kind keeps Blizzard's color.
+	local colorCard = CreateCard(content, "Colors")
+	local colorRows = {}
+	for _, group in ipairs(ns.CombatTextColorGroups) do
+		local row = colorCard:Add(CreateToggleRow(colorCard, group.label, function(checked)
+			ns.SetCombatTextColor(group.key, checked and { unpack(group.default) } or nil)
+			refresh()
+		end))
+		local swatch = CreateFrame("Button", nil, row, "ColorSwatchTemplate")
+		swatch:SetPropagateMouseClicks(false)
+		swatch:SetSize(22, 22)
+		swatch.SwatchBg:SetSize(20, 20)
+		swatch.InnerBorder:SetSize(18, 18)
+		swatch.Color:SetSize(16, 16)
+		swatch:SetPoint("RIGHT", row.toggle, "LEFT", -12, 0)
+		swatch:SetScript("OnClick", function()
+			local previous = ns.GetCombatTextColor(group.key)
+			local start = previous or group.default
+			ColorPickerFrame:SetupColorPickerAndShow({
+				r = start[1], g = start[2], b = start[3],
+				swatchFunc = function()
+					ns.SetCombatTextColor(group.key, { ColorPickerFrame:GetColorRGB() })
+					refresh()
+				end,
+				cancelFunc = function()
+					ns.SetCombatTextColor(group.key, previous)
+					refresh()
+				end,
+			})
+		end)
+		colorRows[#colorRows + 1] = { row = row, swatch = swatch, group = group }
+	end
+	local colorHint = colorCard:Add(CreateLabel(colorCard, "GameFontDisableSmall",
+		"Switched off, a kind keeps Blizzard's color. Crits count with their kind. New colors show on the next hit."), 2)
+	colorHint:SetWordWrap(true)
+
+	local aboutCard = CreateCard(content, "The game's options")
+	local about = aboutCard:Add(CreateLabel(aboutCard, "GameFontHighlightSmall",
+		"These change the game's own scrolling combat text, which only shows while it's switched on in the game's options. Which kinds of text show, and whether they scroll up, down or in an arc, are set there too.\n\nThe damage numbers over enemies are drawn by the game, so addons can't change them."), 2)
+	about:SetWordWrap(true)
+
+	local shownAttach
+
+	function refresh()
+		local enabled = ns.GetCombatTextOption("enabled")
+		moveRow.toggle:SetChecked(enabled)
+		attachRow.dropdown:GenerateMenu()
+		attachRow.dropdown:SetEnabled(enabled)
+		offsetX:Sync()
+		offsetY:Sync()
+		offsetX:SetEnabled(enabled)
+		offsetY:SetEnabled(enabled)
+		reset:SetEnabled(enabled)
+		fontRow.dropdown:GenerateMenu()
+		outlineRow.dropdown:GenerateMenu()
+		scale:Sync()
+		for _, entry in ipairs(colorRows) do
+			local color = ns.GetCombatTextColor(entry.group.key)
+			entry.row.toggle:SetChecked(color ~= nil)
+			local shown = color or entry.group.default
+			entry.swatch:SetColorRGB(shown[1], shown[2], shown[3])
+			entry.swatch:SetAlpha(color and 1 or 0.5)
+		end
+		-- The hint wraps to a different height for each choice, so the page is laid out again.
+		local attach = ns.GetCombatTextOption("attach")
+		if attach ~= shownAttach then
+			shownAttach = attach
+			for _, choice in ipairs(COMBAT_TEXT_ATTACH) do
+				if choice.key == attach then
+					attachHint:SetText(choice.hint)
+				end
+			end
+			relayout()
+		end
+	end
+
+	-- Dragging the box while unlocked changes where it's attached, which the dropdown follows.
+	function ns.OnCombatTextMoved()
+		if content:IsVisible() then
+			refresh()
+		end
+	end
+
+	local function Layout(pageWidth)
+		return LayoutCards({ positionCard, fontCard, colorCard, aboutCard }, content, PAGE_PADDING, PAGE_PADDING, pageWidth)
+	end
+
+	return { Sync = refresh, SetCombatLocked = function() end, Layout = Layout }
+end
+
 local TABS = {
 	{ label = "General", build = BuildGeneral },
 	{ label = "Text", build = BuildTextOptions },
 	{ label = "Buffs/Debuffs", build = BuildAuras },
+	{ label = "Combat text", build = BuildCombatText },
 	{ label = "Profiles", build = BuildProfiles },
 }
 
