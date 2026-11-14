@@ -140,6 +140,29 @@ local function CreatePowerOrb(orb)
 
 	local value = ns.CreateValueText(glass, "orbCenter", glass, "CENTER", orb)
 
+	-- A druid in bear or cat form still has mana underneath, shown small below the power. The text's own
+	-- settings decide whether it shows at all; this holder hides it outside those forms. It hangs from the
+	-- bottom of the power text, so it follows that text when it's moved or resized.
+	local manaHolder = CreateFrame("Frame", "DibsUIOrbManaHolder", glass)
+	manaHolder:SetAllPoints()
+	manaHolder:Hide()
+	local manaAnchor = CreateFrame("Frame", nil, manaHolder)
+	manaAnchor:SetSize(1, 1)
+	manaAnchor:SetPoint("TOP", value, "BOTTOM")
+	local mana = ns.CreateValueText(manaHolder, "orbMana", manaAnchor, "TOP", orb)
+	local manaColor = ns.Colors.druidMana
+	ns.SetTextColor(mana, manaColor[1], manaColor[2], manaColor[3])
+
+	-- The class is checked each time, since it isn't always known yet when the orb is made.
+	local function ShowDruidMana(powerToken)
+		local _, classFile = UnitClass("player")
+		local isShown = classFile == "DRUID" and (powerToken == "RAGE" or powerToken == "ENERGY")
+		manaHolder:SetShown(isShown)
+		if isShown then
+			ns.ShowValue(mana, "player", Enum.PowerType.Mana)
+		end
+	end
+
 	-- Power can be secret. It only goes into the widgets, as with the bars.
 	local function Update(interpolation)
 		local powerType, powerToken = UnitPowerType("player")
@@ -150,12 +173,14 @@ local function CreatePowerOrb(orb)
 		fill:SetMinMaxValues(0, UnitPowerMax("player", powerType))
 		fill:SetValue(UnitPower("player", powerType), interpolation)
 		ns.ShowValue(value, "player", powerType)
+		ShowDruidMana(powerToken)
 	end
 
 	fill:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
 	fill:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
 	fill:RegisterUnitEvent("UNIT_MAXPOWER", "player")
 	fill:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
+	fill:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 	fill:RegisterEvent("PLAYER_ENTERING_WORLD")
 	fill:SetScript("OnEvent", function(_, event)
 		local isPowerTick = event == "UNIT_POWER_UPDATE" or event == "UNIT_POWER_FREQUENT"

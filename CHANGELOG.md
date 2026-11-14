@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Druids in bear or cat form see their mana percentage under the rage or energy in the orb, in smaller blue text. It's in the Text tab as "Orb: Druid mana", where it can be turned off, shown only on mouseover, set to show other values, moved and restyled
+
 ## 0.1.2
 
 - An animated Zzz at the top left of the player bar while you're resting

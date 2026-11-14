@@ -44,6 +44,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Fills from the bottom with your power, with the amount in the middle
 - Mana is a deep blue liquid that slowly swirls, and rage is thick, dark blood. Other power types are a liquid in their own color
 - A thin glowing line marks the top of the liquid
+- Druids in bear or cat form see their mana percentage under the rage or energy, in smaller blue text. It can be turned off or changed in the Text tab as "Orb: Druid mana"
 - Numbers are shortened: `999`, `1.2k`, `12k`, `1.2m`
 - Every text on the bars and orb can be changed or turned off in the settings
 
@@ -282,6 +283,8 @@ Early development, for interface version 16001.
 So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs, how the settings window looks in the live game, and profiles across real characters, still needs checking in-game.
 
 Heal and absorb prediction hasn't been checked with real heals and shields yet, since the simulator doesn't calculate them.
+
+Druid mana under the orb was checked in the simulator in caster, bear and cat form, but not yet in-game.
 
 The resting Zzz and the PvP icon and countdown were checked in the simulator by setting the resting and PvP state by hand. Real resting areas and real PvP flags still need checking in-game.
 

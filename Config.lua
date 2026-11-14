@@ -521,12 +521,16 @@ local PICKER_WIDTH = 440
 
 -- One text spot at a time, picked from a dropdown: whether it shows, what it shows, and how it looks.
 -- None of it is protected, so it all works in combat.
-local function BuildTextOptions(content)
+local function BuildTextOptions(content, _, relayout)
 	local selected = ns.TextGroups[1].fields[1]
 	local refresh
 
 	local pickCard = CreateCard(content, "Text")
 	local fieldRow = pickCard:Add(CreateDropdownRow(pickCard, "Text to edit", nil, 260))
+	-- When a spot only shows some of the time, such as the druid mana, this says when.
+	local note = pickCard:Add(CreateLabel(pickCard, "GameFontDisableSmall", ""), 4)
+	note:SetWordWrap(true)
+	note:Hide()
 	local reset = pickCard:Add(CreateButton(pickCard, "Reset this text", 134), 6, true)
 	reset:SetScript("OnClick", function()
 		ns.ResetTextStyle(selected.key)
@@ -618,6 +622,11 @@ local function BuildTextOptions(content)
 	function refresh()
 		local key = selected.key
 		fieldRow.dropdown:GenerateMenu()
+		note:SetText(selected.note or "")
+		if note:IsShown() ~= (selected.note ~= nil) then
+			note:SetShown(selected.note ~= nil)
+			relayout()
+		end
 		showRow.toggle:SetChecked(ns.GetTextOption(key, "enabled"))
 		mouseoverRow.toggle:SetChecked(ns.GetTextOption(key, "mouseover"))
 		-- A spot without values always shows the same thing, which the dropdown names while switched off.

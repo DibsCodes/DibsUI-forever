@@ -28,6 +28,8 @@ ns.TextGroups = {
 	} },
 	{ label = "Orb", fields = {
 		{ key = "orbCenter", label = "Center", values = "power", defaultFormat = "current", defaultColor = "White" },
+		{ key = "orbMana", label = "Druid mana", values = "power", defaultFormat = "percent", defaultColor = "Light blue",
+			note = "Druids only, in bear and cat form." },
 	} },
 	{ label = "Cast", fields = {
 		{ key = "castName", label = "Spell name", shows = "Spell name", defaultColor = "White" },
@@ -217,6 +219,9 @@ local function LayoutValue(text)
 	lead:ClearAllPoints()
 	if not text.usesLead then
 		text:SetPoint(point, frame, point, x, y)
+	elseif point == "TOP" then
+		text:SetPoint("TOPLEFT", frame, "TOP", x, y)
+		lead:SetPoint("BOTTOMRIGHT", text, "BOTTOMLEFT", leadSpec.x, leadSpec.y)
 	elseif point == "LEFT" then
 		lead:SetPoint("LEFT", frame, "LEFT", x, y)
 		text:SetPoint("BOTTOMLEFT", lead, "BOTTOMRIGHT", -leadSpec.x, -leadSpec.y)
@@ -333,7 +338,7 @@ function ns.CreateText(parent, key, hoverRegion)
 	return text
 end
 
--- A health or power spot, placed at point ("LEFT", "RIGHT" or "CENTER") of anchorFrame. Fill it with ns.ShowValue.
+-- A health or power spot, placed at point ("LEFT", "RIGHT", "CENTER" or "TOP") of anchorFrame. Fill it with ns.ShowValue.
 function ns.CreateValueText(parent, key, anchorFrame, point, hoverRegion)
 	local text = NewText(parent, key, hoverRegion)
 	text.lead = parent:CreateFontString(nil, "OVERLAY")

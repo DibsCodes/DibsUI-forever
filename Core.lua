@@ -69,6 +69,7 @@ ns.Text = {
 	lead = { scale = 1.4, x = -3, y = -1 },
 
 	orbCenter = { size = 28, x = 0, y = 0 }, -- CENTER of the orb
+	orbMana = { size = 14, x = 0, y = -1 }, -- TOP of the text to the BOTTOM of orbCenter; druids in bear and cat form
 
 	playerLeft = { size = 14, x = 22, y = 0 }, -- LEFT of the left bar
 	playerRight = { size = 14, x = -17, y = 0 }, -- RIGHT of the left bar
@@ -133,6 +134,7 @@ ns.Colors = {
 	channel = { 0.35, 0.85, 0.75 },
 	swing = { 0.60, 0.60, 0.60 },
 	manaRule = { 1.00, 0.72, 0.20 }, -- the spark during the five second rule
+	druidMana = { 0.40, 0.70, 1.00 }, -- a druid's mana under the orb's power, lighter than the liquid so it reads over it
 	-- One per combo point, in the order they're earned.
 	combo = {
 		{ 1.00, 0.88, 0.10 },
