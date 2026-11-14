@@ -195,11 +195,11 @@ local function GetOffset(combatText)
 	return anchorX - worldX - locations.startX, floor + GetLineHeight() - worldBottom - lowestTop
 end
 
+-- In combat a line's amount is secret, and Blizzard places it from the text's own height, so its
+-- position is secret too: addon code can't read it, add to it or pass it back to SetPoint. The client
+-- adds the distance to whatever offsets the line has instead, and the distance itself isn't secret.
 local function MoveLine(line, dx, dy)
-	local point, relativeTo, relativePoint, x, y = line:GetPoint(1)
-	if point then
-		line:SetPoint(point, relativeTo, relativePoint, x + dx, y + dy)
-	end
+	line:AdjustPointsOffset(dx, dy)
 end
 
 -- Blizzard places every line again each frame, so each line is moved once from where it was just put.

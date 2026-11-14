@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- Fixed a Lua error in combat ("attempt to perform arithmetic on a secret number value" in CombatText.lua). Damage amounts are secret in combat, which made the combat text lines' positions secret too, so they're now moved without reading them
+
 ## 0.1.4
 
 - The game's scrolling combat text now rises from just above the player bar, or above your short buffs while you have any, instead of up the middle of the screen. A burst of hits stacks upwards without covering the bar
