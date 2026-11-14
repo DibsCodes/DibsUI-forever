@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6
+
+- Fixed incoming heals and absorbs not showing on the player and target bars in game since 0.1.2. The masks that hide the empty pieces' slanted ends were hiding the heals and absorbs entirely. They now work like the orb's masks, so heals and absorbs show and the bar's end still matches the fill below 100% opacity
+
 ## 0.1.5
 
 - Fixed a Lua error in combat ("attempt to perform arithmetic on a secret number value" in CombatText.lua). Damage amounts are secret in combat, which made the combat text lines' positions secret too, so they're now moved without reading them

@@ -314,7 +314,7 @@ Early development, for interface version 16001.
 
 So far DibsUI has been tested in the UIForever simulator and with offline checks, not in the live game. Behavior that depends on the real client, such as secret health and power values in combat, real swing timer events, a real pet, real combo points, real spell costs, how the settings window looks in the live game, and profiles across real characters, still needs checking in-game.
 
-Heal and absorb prediction hasn't been checked with real heals and shields yet, since the simulator doesn't calculate them.
+Heal and absorb prediction was checked in game with a self-cast heal, along with the bar's end at less than full opacity. Absorbs from real shields still need checking.
 
 Druid mana under the orb was checked in the simulator in caster, bear and cat form, but not yet in-game.
 

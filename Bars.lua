@@ -206,26 +206,28 @@ end
 
 -- Hides everything on the near side of the previous bar's cap slant. Below 100% opacity each texture
 -- fades on its own, so anything under that cap would show through it: an empty segment's cap sitting
--- right on it, or the square start of a segment's fill. The mask's left half is the cap's exact
--- complement and its right half is solid. Clamping carries those edges on past the mask, so all of
--- the bar beyond the slant stays visible and none of it before.
-local function MaskBehindCap(segment, previous, spec, side)
+-- right on it, or the square start of a segment's fill. The mask art starts with the cap's exact
+-- complement and is solid after it, for MASK_REACH cap widths, past where a segment can reach.
+--
+-- In game, masks anchored to another frame's texture, given texture coordinates or relying on
+-- clamping hid everything they touched. So, like the orb's masks, each one sits on its own frame and
+-- shows its whole art: the segment starts exactly where the cap before it does, and each wing has
+-- its own art rather than a mirrored one.
+local MASK_REACH = 32 -- generate_art.py's MASK_REACH
+
+local function MaskBehindCap(segment, spec, side)
 	local mask = segment:CreateMaskTexture(nil, "ARTWORK")
-	mask:SetTexture(ns.Media("BarFillMask"), "CLAMP", "CLAMP")
-	mask:SetSnapToPixelGrid(false)
-	mask:SetTexelSnappingBias(0)
-	mask:SetWidth(spec.capWidth * 2)
-	local cap = previous.cap
+	local art = side < 0 and "BarFillMaskLeft" or "BarFillMaskRight"
+	mask:SetTexture(ns.Media(art), "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	mask:SetSize(spec.capWidth * MASK_REACH, spec.fillHeight)
 	if side < 0 then
-		mask:SetPoint("TOPRIGHT", cap, "TOPRIGHT")
-		mask:SetPoint("BOTTOMRIGHT", cap, "BOTTOMRIGHT")
-		mask:SetTexCoord(1, 0, 0, 1)
+		mask:SetPoint("TOPRIGHT", segment, "TOPRIGHT")
 	else
-		mask:SetPoint("TOPLEFT", cap, "TOPLEFT")
-		mask:SetPoint("BOTTOMLEFT", cap, "BOTTOMLEFT")
+		mask:SetPoint("TOPLEFT", segment, "TOPLEFT")
 	end
 	segment:GetStatusBarTexture():AddMaskTexture(mask)
 	segment.cap:AddMaskTexture(mask)
+	segment.mask = mask
 end
 
 -- A bar as wide as the health bar whose fill starts where the previous one's fill ends.
@@ -244,7 +246,7 @@ local function CreatePredictionSegment(parent, level, previous, button)
 		segment:SetPoint("LEFT", fill, "RIGHT")
 	end
 	CreateFillCap(segment, spec, side)
-	MaskBehindCap(segment, previous, spec, side)
+	MaskBehindCap(segment, spec, side)
 	return segment
 end
 
