@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- No changes in the game. Brings 0.3.1 to CurseForge as a beta, since it only came out as an alpha
+
 ## 0.3.1
 
 - DibsUI-Party's frames follow DibsUI's master font and last names, and change straight away when you change them here. Needs DibsUI-Options 0.2.0
