@@ -8,3 +8,7 @@ ignore:
 manual-changelog:
   filename: CHANGELOG.md
   markup-type: markdown
+
+# DibsUI's settings window, profiles and minimap button come from DibsUI-Options.
+required-dependencies:
+  - dibsui-options

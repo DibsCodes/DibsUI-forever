@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- DibsUI now needs [DibsUI-Options](https://www.curseforge.com/projects/1808425), which the CurseForge app installs along with it. The settings window, profiles, minimap button and `/dibsui` moved there, so every DibsUI addon can share them
+- Your profiles, each character's choice of profile and the minimap button's settings move over the first time both load. Nothing else changes: the window, its pages and your settings look the same as before
+
 ## 0.2.0
 
 - A rebuilt settings window, with DibsUI's logo at the top left and its pages listed down the left: General, Player & Pet Frame, Target Frame, Power Orb and Cast Ring, Buffs & Debuffs, Incoming Combat Text and Profiles. Each frame's page has its own text settings, so the Text tab is gone

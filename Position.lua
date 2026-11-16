@@ -39,11 +39,6 @@ local PROFILE_DEFAULTS = {
 	y = Layout.originY,
 }
 
--- Settings shared by the whole account, whichever profile a character uses.
-local ACCOUNT_DEFAULTS = {
-	showMinimapButton = true,
-	minimapAngle = 225, -- degrees anticlockwise from 3 o'clock, so the lower left of the minimap
-}
 
 local root, mover
 
@@ -172,46 +167,63 @@ function ns.CleanProfile(profile)
 	return profile
 end
 
--- DibsUIDB holds the account's settings, every profile, and which profile each character uses.
--- ns.db is the profile this character uses, and ns.account the shared settings.
-function ns.LoadSettings()
-	local saved = type(DibsUIDB) == "table" and DibsUIDB or {}
-	DibsUIDB = saved
+-- Profiles live in DibsUI-Options, shared by every DibsUI addon: each profile holds DibsUI's settings
+-- under "DibsUI". ns.db is DibsUI's table in the profile this character uses, and ns.account DibsUI's
+-- account-wide settings there. DibsUI registers its tabs and lock with DibsUI-Options here too.
 
+-- Before DibsUI-Options, DibsUIDB held every profile, which profile each character used, and the account
+-- settings. It's brought into DibsUI-Options once and then left alone as a backup.
+local function ImportOldSettings(options)
+	local old = DibsUIDB
+	if type(old) ~= "table" then
+		return
+	end
+	local profiles = old.profiles
 	-- Before profiles, one set of settings sat at the top level. It becomes the Default profile.
-	if type(saved.profiles) ~= "table" then
-		local profile = { text = saved.text, width = saved.width }
-		saved.text, saved.width = nil, nil
+	if type(profiles) ~= "table" then
+		local profile = { text = old.text, width = old.width }
 		for key in pairs(PROFILE_DEFAULTS) do
-			profile[key], saved[key] = saved[key], nil
+			profile[key] = old[key]
 		end
-		saved.profiles = { [ns.DEFAULT_PROFILE] = profile }
+		profiles = { [ns.DEFAULT_PROFILE] = profile }
 	end
-	for name, profile in pairs(saved.profiles) do
-		if type(name) ~= "string" or type(profile) ~= "table" then
-			saved.profiles[name] = nil
-		else
-			ns.CleanProfile(profile)
-		end
+	local imported = options:ImportOnce("DibsUI", {
+		profiles = profiles,
+		characters = type(old.characters) == "table" and old.characters or nil,
+		account = { learnedBuffs = old.learnedBuffs },
+		minimap = { show = old.showMinimapButton, angle = old.minimapAngle },
+		window = { width = old.configWidth, height = old.configHeight },
+	})
+	if imported then
+		old.movedToDibsUIOptions = true
 	end
-	saved.profiles[ns.DEFAULT_PROFILE] = saved.profiles[ns.DEFAULT_PROFILE] or ns.CleanProfile({})
-	if type(saved.characters) ~= "table" then
-		saved.characters = {}
-	end
-	FillDefaults(saved, ACCOUNT_DEFAULTS)
-	-- The buffs DibsUI has learned the durations of, shared by every character.
-	saved.learnedBuffs = ns.CleanLearnedBuffs(saved.learnedBuffs)
-	ns.account = saved
+end
 
-	-- A character whose profile has been deleted goes back to Default.
-	ns.characterKey = UnitName("player") .. " - " .. GetRealmName()
-	local name = saved.characters[ns.characterKey]
-	if not saved.profiles[name] then
-		name = ns.DEFAULT_PROFILE
-		saved.characters[ns.characterKey] = nil
-	end
-	ns.profileName = name
-	ns.db = saved.profiles[name]
+function ns.LoadSettings()
+	local options = DibsUIOptions
+	options:RegisterModule({
+		key = "DibsUI",
+		addon = "DibsUI",
+		title = "DibsUI",
+		order = 10,
+		cleanProfile = ns.CleanProfile,
+		tabs = ns.ConfigTabs,
+		onProfileChanged = function(settings)
+			ns.db = settings
+			ns.ApplyProfile()
+		end,
+		isLocked = function()
+			return ns.db.locked
+		end,
+		setLocked = function(locked)
+			ns.SetLocked(locked)
+		end,
+	})
+	ImportOldSettings(options)
+	ns.db = options:GetProfile("DibsUI")
+	ns.account = options:GetAccount("DibsUI")
+	-- The buffs DibsUI has learned the durations of, shared by every character.
+	ns.account.learnedBuffs = ns.CleanLearnedBuffs(ns.account.learnedBuffs)
 end
 
 -- side is -1 for the left wing (player) and 1 for the right (target).

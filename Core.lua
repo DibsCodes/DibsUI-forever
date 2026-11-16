@@ -220,7 +220,6 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateAuraFrames()
 			ns.CreateCombatText()
 			ns.CreateOpacity()
-			ns.CreateMinimapButton()
 		end
 	elseif event == "PLAYER_LOGIN" then
 		-- Said at login rather than on load, once the chat frame is ready to show it.

@@ -128,9 +128,13 @@ Pick a mode in the settings. Smart, the default, follows what's happening:
 
 ## Installation
 
-Download DibsUI from [CurseForge](https://www.curseforge.com/projects/1794621) and copy the `DibsUI` folder from the zip into your game's `_forever_/Interface/AddOns/` folder, then restart the game or type `/reload`.
+DibsUI needs [DibsUI-Options](https://www.curseforge.com/projects/1808425), which holds the settings window, profiles and minimap button shared by every DibsUI addon. The CurseForge app installs it along with DibsUI.
 
-To install from this repository instead, download it as a zip, rename the folder inside to `DibsUI`, and copy that in. The `screenshots` folder isn't needed in-game.
+To install by hand, download DibsUI and DibsUI-Options from CurseForge and copy the `DibsUI` and `DibsUI-Options` folders from the zips into your game's `_forever_/Interface/AddOns/` folder, then restart the game or type `/reload`.
+
+To install from this repository instead, download it as a zip, rename the folder inside to `DibsUI`, and copy that in, along with [DibsUI-Options](https://github.com/DibsCodes/dibsui-options). The `screenshots` folder isn't needed in-game.
+
+Updating from 0.2.0 or earlier, your profiles, each character's choice of profile and the minimap button's settings move over to DibsUI-Options the first time both load. The old settings are left in place.
 
 ## Settings
 
@@ -138,7 +142,7 @@ When you log in, DibsUI says in chat that it's loaded and how to open the settin
 
 Type `/dui lock` or `/dibsui lock` to lock or unlock the frames without opening the settings. Like the Unlock frames button, it can't be used during combat.
 
-Type `/dui` or `/dibsui`, click the minimap button, or open the game's Options, AddOns, DibsUI and press **Open DibsUI settings**, to open the settings window. It's built from Blizzard's newer panels, switches, sliders and dropdowns, with its pages listed down the left.
+Type `/dui` or `/dibsui`, click the minimap button, or open the game's Options, AddOns, DibsUI and press **Open DibsUI settings**, to open the settings window. The window comes from DibsUI-Options, and other DibsUI addons add their own pages to it. It's built from Blizzard's newer panels, switches, sliders and dropdowns, with its pages listed down the left.
 
 Drag the bottom right corner to resize the window, and it remembers its size and the page you had open. Each page's sections flow into as many columns as fit, up to three, and scroll with the mouse wheel or the scroll bar at the right when they don't all fit.
 
@@ -146,7 +150,7 @@ At the top of the window, on every page:
 
 | Setting | What it does |
 |---|---|
-| Unlock frames / Lock frames | Shows or hides drag handles for the frames, the long buffs, the player debuffs, the target buffs and the combat text. The button says which it will do. Bars don't respond to clicks while unlocked. |
+| Unlock frames / Lock frames | Shows or hides drag handles for the frames, the long buffs, the player debuffs, the target buffs and the combat text, along with any other DibsUI addon's frames. The button says which it will do. Bars don't respond to clicks while unlocked. |
 | Show minimap button | Turns the minimap button on or off. |
 
 ### General
@@ -330,7 +334,7 @@ Melee hits, Spell hits, Heals, and Misses, blocks and resists each have a switch
 
 ### Profiles
 
-Profiles are shared by every character on your account, and each character remembers which one it uses. Your settings start in the **Default** profile, and new characters use it too.
+Profiles are shared by every character on your account, and each character remembers which one it uses. A profile holds the settings of every DibsUI addon, so switching changes them all. Your settings start in the **Default** profile, and new characters use it too.
 
 - **Current profile** shows the one this character uses.
 - Click a profile in the list to use it.
