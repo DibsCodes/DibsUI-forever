@@ -508,6 +508,7 @@ function ns.SetMasterFont(font)
 	ns.db.masterFont = font ~= ns.DEFAULT_MASTER_FONT and font or nil
 	ns.RefreshAllText()
 	ns.RefreshAuraFrames()
+	ns.NotifySettingsChanged()
 end
 
 -- Every text drops its own font and follows the master font, buffs and combat text too. Combat text

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- DibsUI-Party's frames follow DibsUI's master font and last names, and change straight away when you change them here. Needs DibsUI-Options 0.2.0
+
 ## 0.3.0
 
 - DibsUI now needs [DibsUI-Options](https://www.curseforge.com/projects/1808425), which the CurseForge app installs along with it. The settings window, profiles, minimap button and `/dibsui` moved there, so every DibsUI addon can share them

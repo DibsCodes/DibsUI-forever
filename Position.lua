@@ -199,6 +199,14 @@ local function ImportOldSettings(options)
 	end
 end
 
+-- Other DibsUI addons, such as DibsUI-Party, follow DibsUI's master font and last names. This tells
+-- them one changed. DibsUI-Options before API version 2 can't pass it on.
+function ns.NotifySettingsChanged()
+	if DibsUIOptions.Fire then
+		DibsUIOptions:Fire("SettingsChanged", "DibsUI")
+	end
+end
+
 function ns.LoadSettings()
 	local options = DibsUIOptions
 	options:RegisterModule({
@@ -489,6 +497,7 @@ end
 function ns.SetSurnamesShown(shown)
 	ns.db.showSurnames = shown
 	ns.RefreshAllText()
+	ns.NotifySettingsChanged()
 end
 
 -- The pet bar's click area is a secure button, so this waits for combat to end like the other frames.
