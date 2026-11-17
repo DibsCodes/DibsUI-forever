@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3
+
+- First full release, no longer a beta. DibsUI-Options is a full release too, so the CurseForge app can install it along with DibsUI
+- With last names on, your name above the player bar shows at login without toggling a setting
+
 ## 0.3.2
 
 - No changes in the game. Brings 0.3.1 to CurseForge as a beta, since it only came out as an alpha

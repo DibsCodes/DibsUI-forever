@@ -282,6 +282,7 @@ local function LayoutName(text)
 	if not issecretvalue(name) and name == nil then
 		return
 	end
+	text.remeasure = nil
 	text:ClearAllPoints()
 	local useRow = ns.db.showSurnames and not issecretvalue(name) and not issecretvalue(surname)
 		and surname ~= nil and surname ~= ""
@@ -294,7 +295,12 @@ local function LayoutName(text)
 		local boxWidth = box:GetWidth()
 		if issecretvalue(nameWidth) or issecretvalue(surnameWidth) or issecretvalue(levelWidth) or issecretvalue(boxWidth) then
 			useRow = false
+		elseif nameWidth <= 0 or surnameWidth <= 0 then
+			-- The font hasn't loaded yet. The plain name shows until it has (see the watcher below).
+			useRow = false
+			text.remeasure = true
 		else
+			text.measured = { nameWidth, surnameWidth, levelWidth }
 			local total = nameWidth + NAME_GAP + surnameWidth + levelWidth
 			if boxWidth > 0 and total > boxWidth then
 				nameWidth = math.max(nameWidth - (total - boxWidth), 1)
@@ -316,6 +322,52 @@ local function LayoutName(text)
 	text.usesSurname = useRow
 	UpdateVisibility(text)
 end
+
+-- At login the font can still be loading when a name is first laid out, so it measures too narrow or
+-- empty and the row cuts the first name off. For a while after each loading screen, names in a row are
+-- measured again every frame and laid out again when a width changes.
+local nameTexts = {}
+local SETTLE_SECONDS = 10
+local settleUntil = 0
+local settleWatcher = CreateFrame("Frame")
+settleWatcher:Hide()
+
+local function MeasureChanged(text)
+	local level = text.levelValue
+	local widths = {
+		text:GetUnboundedStringWidth(),
+		text.surname:GetUnboundedStringWidth(),
+		level ~= nil and NAME_GAP + text.level:GetUnboundedStringWidth() or 0,
+	}
+	for i, width in ipairs(widths) do
+		if issecretvalue(width) then
+			return false
+		end
+		if width ~= text.measured[i] then
+			return true
+		end
+	end
+	return false
+end
+
+settleWatcher:SetScript("OnUpdate", function(self)
+	if GetTime() > settleUntil then
+		self:Hide()
+		return
+	end
+	for _, text in ipairs(nameTexts) do
+		if text.remeasure or (text.usesSurname and text.measured and MeasureChanged(text)) then
+			LayoutName(text)
+		end
+	end
+end)
+
+settleWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+settleWatcher:RegisterEvent("LOADING_SCREEN_DISABLED")
+settleWatcher:SetScript("OnEvent", function(self)
+	settleUntil = GetTime() + SETTLE_SECONDS
+	self:Show()
+end)
 
 local function Reposition(text)
 	if text.lead then
@@ -388,6 +440,7 @@ function ns.CreateNameText(parent, key, hoverRegion)
 	text.level:SetTextColor(LEVEL_COLOR[1], LEVEL_COLOR[2], LEVEL_COLOR[3])
 	text.level:SetPoint("BOTTOMLEFT", text.surname, "BOTTOMRIGHT", NAME_GAP, 0)
 	Register(text)
+	table.insert(nameTexts, text)
 	return text
 end
 
