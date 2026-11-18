@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5
+
+- New Theme setting on the General page: Default (brushed silver and gold) or Bronze (rough cast bronze with a carved eagle, and a slightly bigger orb rim). Each profile keeps its own theme, and it switches straight away, in combat too
+- With DibsUI-Party installed, changing the theme in either addon asks whether to use it for the other one too
+
 ## 0.3.4
 
 - The cast ring is animated: light flows round it while you cast, and slides back when a hit pushes your cast back. The swing timer flows the same way. Turn it off with Animated ring on the Cast Ring page

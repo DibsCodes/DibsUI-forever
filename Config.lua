@@ -276,6 +276,8 @@ end
 -- Look and feel, size, position and opacity. Size and position move secure frames, so they're locked in combat.
 local function BuildGeneral(content)
 	local lookCard = CreateCard(content, "Look & feel")
+	local themeRow = lookCard:Add(CreateDropdownRow(lookCard, "Theme"))
+	local themeHint = lookCard:Add(CreateHint(lookCard, ""), 6)
 	local showToT = lookCard:Add(CreateToggleRow(lookCard, "Show target of target", ns.SetTargetOfTargetShown))
 	local surnames = lookCard:Add(CreateToggleRow(lookCard, "Show last names", ns.SetSurnamesShown))
 	local prediction = lookCard:Add(CreateToggleRow(lookCard, "Show incoming heals and absorbs", ns.SetHealPredictionShown))
@@ -284,6 +286,18 @@ local function BuildGeneral(content)
 	local applyFont = lookCard:Add(CreateButton(lookCard, "Use for all text", 150), 4, true)
 	local fontHint = lookCard:Add(CreateHint(lookCard,
 		"Texts with a font of their own keep it until you press Use for all text. That includes buff texts and combat text."), 6)
+
+	local function SyncTheme()
+		themeRow.dropdown:GenerateMenu()
+		themeHint:SetText(ns.GetTheme().description)
+	end
+	ns.SyncThemeControl = SyncTheme -- for a theme picked in DibsUI-Party
+	SetUpChoiceMenu(themeRow.dropdown, ns.Themes,
+		function() return ns.GetTheme().key end,
+		function(theme)
+			ns.SetTheme(theme)
+			SyncTheme()
+		end)
 
 	SetUpFontMenu(masterRow.dropdown,
 		function() return ns.GetMasterFont() end,
@@ -401,6 +415,7 @@ local function BuildGeneral(content)
 		prediction.toggle:SetChecked(ns.db.showHealPrediction)
 		pvpIcon.toggle:SetChecked(ns.db.showPvPIcon)
 		masterRow.dropdown:GenerateMenu()
+		SyncTheme()
 		SyncOpacity()
 		lowHealthCard:Sync()
 		scale:Sync()

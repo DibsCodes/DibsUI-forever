@@ -30,6 +30,7 @@ local PROFILE_DEFAULTS = {
 	castTextPlacement = "below", -- or "above" the orb
 	showPet = true,
 	orbStyle = "animated", -- "plain" or "flat"
+	theme = "default", -- border art, a key of ns.Themes
 	showManaSpark = true, -- the five second rule
 	showSwingTimer = true,
 	castAnimated = true, -- light flowing round the cast ring
@@ -171,6 +172,9 @@ function ns.CleanProfile(profile)
 	if not knownStyle then
 		profile.orbStyle = PROFILE_DEFAULTS.orbStyle
 	end
+	if not ns.ThemesByKey[profile.theme] then
+		profile.theme = PROFILE_DEFAULTS.theme
+	end
 	if profile.castTextPlacement ~= "below" and profile.castTextPlacement ~= "above" then
 		profile.castTextPlacement = PROFILE_DEFAULTS.castTextPlacement
 	end
@@ -241,6 +245,7 @@ function ns.LoadSettings()
 		end,
 	})
 	ImportOldSettings(options)
+	ns.ListenForThemeRequests()
 	ns.db = options:GetProfile("DibsUI")
 	ns.account = options:GetAccount("DibsUI")
 	-- The buffs DibsUI has learned the durations of, shared by every character.
@@ -499,6 +504,7 @@ function ns.ApplyProfile()
 	ns.UpdateOrb()
 	ns.UpdateLowHealthGlow()
 	ns.RefreshCombatText()
+	ns.UpdateTheme()
 end
 
 -- Not protected, so this works in combat, even mid-cast.
@@ -523,6 +529,60 @@ function ns.SetPetShown(shown)
 end
 
 -- The orb and cast ring settings aren't protected, so they all work in combat.
+
+-- DibsUI and DibsUI-Party each have their own theme. Picking one in either asks whether the other
+-- should match, when it's loaded and on a different theme; yes tells it through DibsUI-Options'
+-- "ThemeRequested" message, and the theme it gets that way doesn't ask back.
+local PARTY = "DibsUI-Party"
+
+StaticPopupDialogs.DIBSUI_THEME_FOR_PARTY = {
+	text = "Use the %s theme for DibsUI-Party too?",
+	button1 = YES,
+	button2 = NO,
+	OnAccept = function(_, data)
+		DibsUIOptions:Fire("ThemeRequested", PARTY, data.theme)
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+}
+
+-- The party frames' theme, or nil when DibsUI-Party isn't loaded or has no themes (an older version).
+local function GetPartyTheme()
+	if not C_AddOns.IsAddOnLoaded(PARTY) then
+		return nil
+	end
+	local ok, settings = pcall(DibsUIOptions.GetProfile, DibsUIOptions, PARTY)
+	return ok and type(settings) == "table" and type(settings.theme) == "string" and settings.theme or nil
+end
+
+-- quiet: the theme came from DibsUI-Party, so don't ask about it.
+function ns.SetTheme(theme, quiet)
+	local changed = ns.db.theme ~= theme
+	ns.db.theme = theme
+	ns.UpdateTheme()
+	if quiet or not changed then
+		return
+	end
+	local partyTheme = GetPartyTheme()
+	if partyTheme and partyTheme ~= theme then
+		StaticPopup_Show("DIBSUI_THEME_FOR_PARTY", ns.ThemesByKey[theme].label, nil, { theme = theme })
+	end
+end
+
+function ns.ListenForThemeRequests()
+	if not DibsUIOptions.RegisterCallback then
+		return
+	end
+	DibsUIOptions:RegisterCallback("ThemeRequested", function(target, theme)
+		if target == "DibsUI" and ns.ThemesByKey[theme] then
+			ns.SetTheme(theme, true)
+			if ns.SyncThemeControl then
+				ns.SyncThemeControl()
+			end
+		end
+	end)
+end
 
 function ns.SetOrbStyle(style)
 	ns.db.orbStyle = style

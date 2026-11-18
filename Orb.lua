@@ -803,5 +803,12 @@ function ns.CreateOrb()
 
 	-- Rims and the 12 o'clock tick, above the cast swipe.
 	local rim = CreateLayer(orb, orb:GetFrameLevel() + 4)
-	ns.CreateArt(rim, "ARTWORK", "OrbFrame"):SetAllPoints()
+	local rimArt = ns.CreateArt(rim, "ARTWORK", "OrbFrame")
+	rimArt:SetPoint("CENTER", orb)
+	-- Some themes' rims reach past the orb's quad, so their art is drawn bigger.
+	ns.UpdateRimSize = function()
+		local size = Layout.orbQuad * (ns.GetTheme().rimScale or 1)
+		rimArt:SetSize(size, size)
+	end
+	ns.UpdateRimSize()
 end

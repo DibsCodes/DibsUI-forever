@@ -6,6 +6,37 @@ function ns.Media(name)
 	return MEDIA .. name
 end
 
+-- Border art themes, picked on the General page. A theme lists only the textures it replaces, from
+-- Media\Themes\<folder>; everything else is shared. rimScale: how big the orb rim is drawn, as a
+-- multiple of the orb, for themes whose rim has ornament reaching past the shipped one.
+-- The themed art is made with devResources/DibsUI/art/theme_art.py.
+ns.Themes = {
+	{ key = "default", label = "Default", description = "Brushed silver and gold." },
+	{ key = "bronze", label = "Bronze", description = "Rough cast bronze with a carved eagle.", folder = "Bronze",
+		textures = { OrbFrame = true, BarHealthFrame = true, BarPowerFrame = true, BarPetFrame = true }, rimScale = 1.25 },
+}
+ns.ThemesByKey = {}
+local themeable = {} -- every texture name some theme replaces
+for _, theme in ipairs(ns.Themes) do
+	ns.ThemesByKey[theme.key] = theme
+	for name in pairs(theme.textures or {}) do
+		themeable[name] = true
+	end
+end
+
+function ns.GetTheme()
+	return ns.db and ns.ThemesByKey[ns.db.theme] or ns.Themes[1]
+end
+
+-- The file for a texture in the current theme.
+function ns.ThemedMedia(name)
+	local theme = ns.GetTheme()
+	if theme.textures and theme.textures[name] then
+		return MEDIA .. "Themes\\" .. theme.folder .. "\\" .. name
+	end
+	return MEDIA .. name
+end
+
 -- Where a bar's art sits, and where to cut it into three so the width setting only stretches the
 -- straight middle, keeping the slanted ends and double border in shape. Distances from the texture's start.
 local BAR_ART = { start = 0, width = 320, sliceInner = 75, sliceTip = 165 } -- starts at the orb centre
@@ -169,13 +200,29 @@ function ns.GetPowerColor(powerToken)
 	return color[1], color[2], color[3]
 end
 
+-- Textures a theme can replace, kept so a theme switch can swap their files.
+local themedTextures = {}
+
 -- A texture that stays crisp at any UI scale instead of snapping to the pixel grid.
 function ns.CreateArt(parent, layer, fileName)
 	local texture = parent:CreateTexture(nil, layer)
-	texture:SetTexture(ns.Media(fileName))
+	texture:SetTexture(ns.ThemedMedia(fileName))
 	texture:SetSnapToPixelGrid(false)
 	texture:SetTexelSnappingBias(0)
+	if themeable[fileName] then
+		themedTextures[#themedTextures + 1] = { texture = texture, name = fileName }
+	end
 	return texture
+end
+
+-- After a theme switch or a profile change. Textures aren't protected, so this works in combat.
+function ns.UpdateTheme()
+	for _, entry in ipairs(themedTextures) do
+		entry.texture:SetTexture(ns.ThemedMedia(entry.name))
+	end
+	if ns.UpdateRimSize then
+		ns.UpdateRimSize()
+	end
 end
 
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
