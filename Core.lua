@@ -27,6 +27,8 @@ ns.Layout = {
 	manaSparkQuad = 128, -- size of the spark's texture, with margin for rotating it
 
 	barQuadHeight = 40,
+	glowQuadHeight = 64, -- the low health glow's bar textures, taller to leave room for the glow
+	orbGlowQuad = 200, -- the low health glow round the orb, bigger than the orb for the same reason
 
 	-- The target wing slides from under the ring, so it's clipped where the bar first clears it.
 	-- Left of this it would show through the orb, which is see-through at rest.
@@ -42,7 +44,7 @@ ns.Layout = {
 	health = {
 		yCenter = 31, height = 34, tip = 245, hitInner = 52,
 		fillInner = 68, fillOuter = 224.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 14, wedgeArt = "BarFillInner",
-		back = "BarHealthBack", frame = "BarHealthFrame", art = BAR_ART, widthSettings = { "playerWidth", "targetWidth" },
+		back = "BarHealthBack", frame = "BarHealthFrame", glow = "BarHealthGlow", art = BAR_ART, widthSettings = { "playerWidth", "targetWidth" },
 	},
 	power = {
 		yCenter = 2, height = 18, tip = 188, hitInner = 66,
@@ -56,7 +58,7 @@ ns.Layout = {
 	pet = {
 		yCenter = 31, height = 34, tip = 369, hitInner = 231, hitInset = 18,
 		fillInner = 251.41, fillOuter = 348.59, fillHeight = 26, capWidth = 13.76, wedgeWidth = 13.76, wedgeArt = "BarFillSlant",
-		back = "BarPetBack", frame = "BarPetFrame", art = PET_ART, widthSettings = { "petWidth", "totWidth" }, followsHealth = true,
+		back = "BarPetBack", frame = "BarPetFrame", glow = "BarPetGlow", art = PET_ART, widthSettings = { "petWidth", "totWidth" }, followsHealth = true,
 	},
 }
 
@@ -134,6 +136,7 @@ ns.Colors = {
 	cast = { 1.00, 0.76, 0.25 },
 	channel = { 0.35, 0.85, 0.75 },
 	swing = { 0.60, 0.60, 0.60 },
+	gcd = { 0.30, 0.90, 0.35 }, -- the global cooldown after an instant ability
 	manaRule = { 1.00, 0.72, 0.20 }, -- the spark during the five second rule
 	druidMana = { 0.40, 0.70, 1.00 }, -- a druid's mana under the orb's power, lighter than the liquid so it reads over it
 	-- One per combo point, in the order they're earned.

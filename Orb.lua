@@ -37,10 +37,11 @@ local LIQUIDS = {
 }
 
 -- How the liquid looks, picked in the settings. Plain keeps the liquid and its surface line but drops
--- the turning flows.
+-- the turning flows. Flat is a single color, the power's own, under the glass.
 ns.OrbStyles = {
 	{ key = "animated", label = "Animated", description = "Swirling liquid, in the power's own style." },
 	{ key = "plain", label = "Plain", description = "A still liquid with no swirls." },
+	{ key = "flat", label = "Flat", description = "A flat fill in the power's color." },
 }
 
 -- Every other power: grey liquid and a single flow, in the power's colour.
@@ -49,6 +50,12 @@ local TINTED_LIQUID = {
 	flows = {
 		{ texture = "OrbFlow1", blend = "ADD", alpha = 0.30, speed = -1 / 18 },
 	},
+}
+
+-- The flat style: no painted liquid and no flows, only the power's color.
+local FLAT_LIQUID = {
+	texture = "Flat",
+	flows = {},
 }
 
 local function Lighten(r, g, b)
@@ -108,14 +115,18 @@ local function CreatePowerOrb(orb)
 
 	local shownToken, shownStyle
 	local function ShowLiquid(powerToken)
-		local animated = ns.db.orbStyle ~= "plain"
-		if powerToken == shownToken and animated == shownStyle then
+		local orbStyle = ns.db.orbStyle
+		if powerToken == shownToken and orbStyle == shownStyle then
 			return
 		end
-		shownToken, shownStyle = powerToken, animated
+		shownToken, shownStyle = powerToken, orbStyle
+		local animated = orbStyle == "animated"
 		local style = LIQUIDS[powerToken]
 		local r, g, b = 1, 1, 1
-		if not style then
+		if orbStyle == "flat" then
+			style = FLAT_LIQUID
+			r, g, b = ns.GetPowerColor(powerToken)
+		elseif not style then
 			style = TINTED_LIQUID
 			r, g, b = ns.GetPowerColor(powerToken)
 		end
@@ -372,7 +383,8 @@ local function CreateCastInfo(orb)
 
 	local timeText = ns.CreateText(info, "castTime", orb)
 
-	-- How wide the name is, measured when a cast starts.
+	-- How wide the name is, measured when a cast starts. nil when the name is secret, which can be
+	-- shown but not measured.
 	local nameWidth = 0
 
 	local function GetY(spec)
@@ -383,14 +395,22 @@ local function CreateCastInfo(orb)
 	-- Without the icon the name starts where the icon would, so it's centred on its own.
 	local function Place()
 		local showIcon = ns.db.showCastIcon
-		local rowWidth = showIcon and (iconSpec.size + nameSpec.x + nameWidth) or nameWidth
 		icon:SetShown(showIcon)
 		icon:ClearAllPoints()
-		icon:SetPoint("LEFT", orb, "CENTER", iconSpec.x - rowWidth / 2, GetY(iconSpec))
-		if showIcon then
-			ns.MoveText(name, "LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
+		if nameWidth then
+			local rowWidth = showIcon and (iconSpec.size + nameSpec.x + nameWidth) or nameWidth
+			icon:SetPoint("LEFT", orb, "CENTER", iconSpec.x - rowWidth / 2, GetY(iconSpec))
+			if showIcon then
+				ns.MoveText(name, "LEFT", icon, "RIGHT", nameSpec.x, nameSpec.y)
+			else
+				ns.MoveText(name, "LEFT", icon, "LEFT", 0, nameSpec.y)
+			end
 		else
-			ns.MoveText(name, "LEFT", icon, "LEFT", 0, nameSpec.y)
+			-- Unmeasured: the name's centre sits half the icon and gap right of the orb's, with the icon
+			-- against its left, which centres the row whatever the name's width.
+			local shift = showIcon and (iconSpec.size + nameSpec.x) / 2 or 0
+			ns.MoveText(name, "CENTER", orb, "CENTER", iconSpec.x + shift, GetY(iconSpec) + nameSpec.y)
+			icon:SetPoint("RIGHT", name, "LEFT", -nameSpec.x, -nameSpec.y)
 		end
 		ns.MoveText(timeText, "CENTER", orb, "CENTER", timeSpec.x, GetY(timeSpec))
 	end
@@ -401,6 +421,9 @@ local function CreateCastInfo(orb)
 	local sinceUpdate = 0
 
 	local function UpdateTime()
+		if not startMS then
+			return
+		end
 		local total = (endMS - startMS) / 1000
 		local current = math.min(math.max(GetTime() - startMS / 1000, 0), total)
 		timeText:SetFormattedText("%.1f / %.1f", countsDown and total - current or current, total)
@@ -414,21 +437,56 @@ local function CreateCastInfo(orb)
 		end
 	end)
 
-	-- These are only called for casts whose details are readable, so measuring the name is safe.
-	function info:Start(spellName, texture, castStartMS, castEndMS, isDraining)
-		startMS, endMS, countsDown = castStartMS, castEndMS, isDraining
+	-- A secret name or icon can still be shown, but the name can't be measured.
+	local function ShowSpell(spellName, texture)
 		icon:SetTexture(texture)
 		name:SetText(spellName)
-
-		nameWidth = name:GetStringWidth()
+		nameWidth = not issecretvalue(spellName) and name:GetStringWidth() or nil
 		Place()
+		info:Show()
+	end
 
+	function info:Start(spellName, texture, castStartMS, castEndMS, isDraining)
+		startMS, endMS, countsDown = castStartMS, castEndMS, isDraining
+		ShowSpell(spellName, texture)
 		UpdateTime()
-		self:Show()
+	end
+
+	-- An instant ability on the global cooldown: its icon and name, with no time.
+	function info:ShowInstant(spellName, texture)
+		startMS = nil
+		timeText:SetText("")
+		ShowSpell(spellName, texture)
 	end
 
 	return info
 end
+
+-- The animated ring is a flipbook of ring textures with light flowing round them (generate_art.py's
+-- CastFlow frames), swapped into the swipe in turn. The swipe itself can't be masked or turned.
+local FLOW_FRAMES = 24
+local FLOW_FPS = 24
+local FLOW_TEXTURES = {}
+for i = 1, FLOW_FRAMES do
+	FLOW_TEXTURES[i] = ns.Media(("CastFlow%02d"):format(i))
+end
+
+-- Pushback moves a cast's end later, so the ring would jump back. Instead it slides back over this long,
+-- easing out, while the cast carries on filling underneath.
+local PUSHBACK_SLIDE = 0.3
+
+-- The global cooldown's own spell. A spell on the global cooldown reports it too (isOnGCD).
+--
+-- In combat a cooldown's start and length are secret, so addon code can't time it. The ring gets it
+-- as a duration object instead, which the client draws without the addon reading it, and whether it
+-- is still running comes from isActive and isOnGCD, which are never secret.
+local GCD_SPELL = 61304
+
+local TIMING_CHANGE_EVENTS = {
+	UNIT_SPELLCAST_DELAYED = true,
+	UNIT_SPELLCAST_CHANNEL_UPDATE = true,
+	UNIT_SPELLCAST_EMPOWER_UPDATE = true,
+}
 
 local function CreateCastRing(orb)
 	local info = CreateCastInfo(orb)
@@ -451,28 +509,174 @@ local function CreateCastRing(orb)
 	local isChanneling = false
 	local isCasting = false
 	local swingStart, swingDuration
+	-- The swing timer is on the ring: no cast is showing and the swing hasn't finished.
+	local isSwinging = false
+	-- The spell whose cooldown is the global cooldown an instant ability started (GCD_SPELL, or the
+	-- ability itself), and whether the ring is showing it.
+	local gcdSource
+	local isGCD = false
+	-- The instant ability that started it. In combat its name and icon can be secret, which is fine:
+	-- they're only shown, never compared, so whether there is one is kept separately.
+	local gcdSpellName, gcdSpellIcon, hasGCDSpell
+	local ShowIdle, IsGCDRunning
 
-	-- With no cast running, the ring shows the main hand swing in grey, or nothing.
-	local function ShowIdle()
+	-- The cast being shown: when it started and how long it lasts, in seconds, and its color.
+	local castStart, castDuration
+	local castR, castG, castB = 1, 1, 1
+	-- While sliding back from pushback: how far ahead of the real progress the ring still is, as a
+	-- fraction of the cast, and when the slide began.
+	local slideFrom, slideStart
+	local flowFrame
+
+	local animator = CreateFrame("Frame", nil, orb)
+	animator:Hide()
+
+	local function ShowStaticRing()
+		if flowFrame then
+			flowFrame = nil
+			ring:SetSwipeTexture(ns.Media("CastRing"))
+			ring:SetSwipeColor(castR, castG, castB, 1)
+		end
+	end
+
+	-- Flows while a cast, the global cooldown or the swing timer shows, when the animation is on.
+	local function IsFlowing()
+		return ns.db.castAnimated and (isCasting or isGCD or isSwinging)
+	end
+
+	local function UpdateAnimator()
+		local flowing = IsFlowing()
+		if not flowing then
+			ShowStaticRing()
+		end
+		-- The global cooldown has no end event either, so it's watched to hand back to the swing timer.
+		animator:SetShown(flowing or slideFrom ~= nil or isGCD)
+	end
+
+	animator:SetScript("OnUpdate", function()
+		local now = GetTime()
+		if isGCD and not IsGCDRunning() then
+			ShowIdle()
+		end
+		-- The swing timer has no end event, so its flow stops when the swing runs out.
+		if isSwinging and now >= swingStart + swingDuration then
+			isSwinging = false
+			UpdateAnimator()
+		end
+		if IsFlowing() then
+			local frame = math.floor(now * FLOW_FPS) % FLOW_FRAMES + 1
+			if frame ~= flowFrame then
+				flowFrame = frame
+				ring:SetSwipeTexture(FLOW_TEXTURES[frame])
+				ring:SetSwipeColor(castR, castG, castB, 1)
+			end
+		end
+		if slideFrom then
+			local t = (now - slideStart) / PUSHBACK_SLIDE
+			if t >= 1 or not isCasting then
+				slideFrom = nil
+				if isCasting then
+					ring:SetCooldown(castStart, castDuration)
+				end
+				UpdateAnimator()
+			else
+				local ease = 1 - (1 - t) ^ 3
+				local shown = (now - castStart) / castDuration + slideFrom * (1 - ease)
+				shown = math.min(math.max(shown, 0), 1)
+				ring:SetCooldown(now - shown * castDuration, castDuration)
+			end
+		end
+	end)
+
+	-- An instant ability was just used: if it started the global cooldown, the ring shows it, with the
+	-- ability's name and icon when they're readable. An ability off the global cooldown doesn't.
+	local function StartGCD(spellID)
+		if issecretvalue(spellID) then
+			return false
+		end
+		local own = C_Spell.GetSpellCooldown(spellID)
+		local gcd = C_Spell.GetSpellCooldown(GCD_SPELL)
+		local source
+		if own and (own.isOnGCD or own.isActive) and gcd and gcd.isActive then
+			source = GCD_SPELL
+		elseif own and own.isOnGCD then
+			source = spellID
+		end
+		if not source then
+			return false
+		end
+		gcdSource = source
+		local spell = C_Spell.GetSpellInfo(spellID)
+		hasGCDSpell = spell ~= nil
+		gcdSpellName, gcdSpellIcon = spell and spell.name, spell and spell.iconID
+		return true
+	end
+
+	-- Puts the global cooldown on the ring. The duration object works even when the numbers are secret.
+	-- In case the client refuses it from addon code, readable numbers are the fallback.
+	local function ShowGCDCooldown()
+		local duration = C_Spell.GetSpellCooldownDuration(gcdSource)
+		if duration and pcall(ring.SetCooldownFromDurationObject, ring, duration) then
+			return true
+		end
+		local info = C_Spell.GetSpellCooldown(gcdSource)
+		if info and not issecretvalue(info.startTime) and not issecretvalue(info.duration) then
+			ring:SetCooldown(info.startTime, info.duration)
+			return true
+		end
+		return false
+	end
+
+	function IsGCDRunning()
+		local info = gcdSource and C_Spell.GetSpellCooldown(gcdSource)
+		if not info then
+			return false
+		end
+		if gcdSource == GCD_SPELL then
+			return info.isActive
+		end
+		return info.isOnGCD
+	end
+
+	-- With no cast running, the ring shows the global cooldown in green, the main hand swing in grey,
+	-- or nothing.
+	function ShowIdle()
 		activeCastID = nil
 		isChanneling = false
 		isCasting = false
-		info:Hide()
+		slideFrom = nil
 		ring:SetIgnoreParentAlpha(false)
-		if ns.db.showSwingTimer and swingStart and GetTime() < swingStart + swingDuration then
+		local now = GetTime()
+		isGCD = ns.db.castGCD and IsGCDRunning() and ShowGCDCooldown() or false
+		isSwinging = not isGCD and ns.db.showSwingTimer and swingStart ~= nil and now < swingStart + swingDuration
+		if isGCD and hasGCDSpell then
+			info:ShowInstant(gcdSpellName, gcdSpellIcon)
+		else
+			info:Hide()
+		end
+		if isGCD then
+			-- Like a cast, at full opacity whatever the rest of the frame is doing.
+			ring:SetIgnoreParentAlpha(true)
+			local color = ns.Colors.gcd
+			castR, castG, castB = color[1], color[2], color[3]
+			ring:SetReverse(true)
+			ring:SetSwipeColor(color[1], color[2], color[3], 1)
+		elseif isSwinging then
 			local color = ns.Colors.swing
+			castR, castG, castB = color[1], color[2], color[3]
 			ring:SetReverse(true)
 			ring:SetSwipeColor(color[1], color[2], color[3], 1)
 			ring:SetCooldown(swingStart, swingDuration)
 		else
 			ring:Clear()
 		end
+		UpdateAnimator()
 	end
 
 	-- The player's casts are readable, except spells Blizzard individually flags as secret.
 	-- Those can't be timed from addon code, so the ring stays empty for them. Check for
 	-- secrecy first, because even comparing a secret value to nil is an error.
-	local function Update()
+	local function Update(event)
 		local _, spellName, texture, startMS, endMS, castID, isEmpowered
 		_, spellName, texture, startMS, endMS, _, castID = UnitCastingInfo("player")
 		local isCast = issecretvalue(startMS) or startMS ~= nil
@@ -486,19 +690,50 @@ local function CreateCastRing(orb)
 			return
 		end
 
-		activeCastID = not issecretvalue(castID) and castID or nil
+		local newCastID = not issecretvalue(castID) and castID or nil
+		local start, duration = startMS / 1000, (endMS - startMS) / 1000
+		local now = GetTime()
+
+		-- The same cast with new timing: slide from where the ring is now rather than jumping.
+		local isSameCast = isCasting and isChanneling == not isCast and newCastID == activeCastID
+		if TIMING_CHANGE_EVENTS[event] and isSameCast and castDuration and castDuration > 0 and duration > 0 then
+			local shownBefore = (now - castStart) / castDuration
+			if slideFrom then
+				local t = math.min((now - slideStart) / PUSHBACK_SLIDE, 1)
+				shownBefore = shownBefore + slideFrom * (1 - (1 - (1 - t) ^ 3))
+			end
+			local shownAfter = (now - start) / duration
+			slideFrom = shownBefore - shownAfter
+			slideStart = now
+		elseif not isSameCast then
+			slideFrom = nil
+		end
+
+		activeCastID = newCastID
 		isChanneling = not isCast
 		isCasting = true
+		isSwinging = false
+		-- A cast's own global cooldown isn't shown after it ends: only an instant ability's is.
+		isGCD = false
+		gcdSource = nil
+		castStart, castDuration = start, duration
 		-- Casts always show at full opacity, whatever the rest of the frame is doing.
 		ring:SetIgnoreParentAlpha(true)
 
 		local color = isCast and ns.Colors.cast or ns.Colors.channel
+		castR, castG, castB = color[1], color[2], color[3]
 		local isFilling = isCast or isEmpowered
 		ring:SetReverse(isFilling)
-		ring:SetSwipeColor(color[1], color[2], color[3], 1)
-		ring:SetCooldown(startMS / 1000, (endMS - startMS) / 1000)
+		ring:SetSwipeColor(castR, castG, castB, 1)
+		if not slideFrom then
+			ring:SetCooldown(start, duration)
+		end
+		UpdateAnimator()
 		info:Start(spellName, texture, startMS, endMS, not isFilling)
 	end
+
+	-- Switching the animation on or off shows straight away, even mid-cast.
+	ns.UpdateCastRingStyle = UpdateAnimator
 
 	-- Switching the swing timer shows or clears it straight away, unless a cast is showing.
 	ns.UpdateSwingTimer = function()
@@ -512,8 +747,15 @@ local function CreateCastRing(orb)
 	end
 	ring:RegisterEvent("PLAYER_ENTERING_WORLD")
 	ring:RegisterEvent("PLAYER_SWING")
-	ring:SetScript("OnEvent", function(_, event, arg1, arg2)
-		if event == "PLAYER_SWING" then
+	ring:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+	ring:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
+		if event == "UNIT_SPELLCAST_SUCCEEDED" then
+			-- arg3 is the spell. A cast-time spell also succeeds, but its cast is still showing then.
+			if not isCasting and StartGCD(arg3) then
+				ShowIdle()
+			end
+			return
+		elseif event == "PLAYER_SWING" then
 			if arg2 == Enum.PlayerSwingType.MainHand then
 				swingStart, swingDuration = GetTime(), arg1
 				if not isCasting then
@@ -531,7 +773,7 @@ local function CreateCastRing(orb)
 			ShowIdle()
 			return
 		end
-		Update()
+		Update(event)
 	end)
 end
 
@@ -543,6 +785,16 @@ function ns.CreateOrb()
 	orb:SetPoint("CENTER", ns.root, "CENTER")
 
 	ns.CreateArt(orb, "BACKGROUND", "OrbBack"):SetAllPoints()
+
+	-- The low health glow round the ring, under the bars so it only shows outside them.
+	local glowFrame = CreateFrame("Frame", nil, ns.root)
+	glowFrame:SetFrameStrata("LOW")
+	glowFrame:SetFrameLevel(ns.Level.bar - 1)
+	glowFrame:SetSize(Layout.orbGlowQuad, Layout.orbGlowQuad)
+	glowFrame:SetPoint("CENTER", orb)
+	local glow = ns.CreateArt(glowFrame, "BACKGROUND", "OrbGlow")
+	glow:SetAllPoints()
+	ns.AddLowHealthGlow(glow)
 
 	CreatePowerOrb(orb)
 	CreateComboRing(orb)

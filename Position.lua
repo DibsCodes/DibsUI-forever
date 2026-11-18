@@ -7,6 +7,7 @@ ns.WidthRange = { min = 0.5, max = 2, step = 0.05 }
 ns.TextSizeRange = { min = 6, max = 40, step = 1 }
 ns.TextOffsetRange = { min = -100, max = 100, step = 1 }
 ns.OpacityRange = { min = 0, max = 1, step = 0.05 }
+ns.LowHealthRange = { min = 5, max = 50, step = 5 } -- percent
 
 ns.DEFAULT_PROFILE = "Default"
 
@@ -28,10 +29,14 @@ local PROFILE_DEFAULTS = {
 	showPvPIcon = true,
 	castTextPlacement = "below", -- or "above" the orb
 	showPet = true,
-	orbStyle = "animated", -- or "plain"
+	orbStyle = "animated", -- "plain" or "flat"
 	showManaSpark = true, -- the five second rule
 	showSwingTimer = true,
+	castAnimated = true, -- light flowing round the cast ring
+	castGCD = true, -- the global cooldown on the ring after an instant ability
 	showCastIcon = true,
+	lowHealthGlow = true, -- a faint red glow round the orb and the player's bars
+	lowHealthThreshold = 20, -- percent of health below which it shows
 	opacityMode = "smart",
 	manualOpacity = 0.6,
 	-- Orb centre relative to the bottom centre of the screen, in UIParent units so it holds still when scaling.
@@ -147,15 +152,23 @@ function ns.CleanProfile(profile)
 		profile.manualOpacity = PROFILE_DEFAULTS.manualOpacity
 	end
 	profile.manualOpacity = Clamp(profile.manualOpacity, ns.OpacityRange)
+	if type(profile.lowHealthThreshold) ~= "number" then
+		profile.lowHealthThreshold = PROFILE_DEFAULTS.lowHealthThreshold
+	end
+	profile.lowHealthThreshold = Clamp(profile.lowHealthThreshold, ns.LowHealthRange)
 	if type(profile.masterFont) ~= "string" then
 		profile.masterFont = nil
 	end
-	for _, key in ipairs({ "showPet", "showManaSpark", "showSwingTimer", "showCastIcon" }) do
+	for _, key in ipairs({ "showPet", "showManaSpark", "showSwingTimer", "showCastIcon", "castAnimated", "castGCD", "lowHealthGlow" }) do
 		if type(profile[key]) ~= "boolean" then
 			profile[key] = PROFILE_DEFAULTS[key]
 		end
 	end
-	if profile.orbStyle ~= "animated" and profile.orbStyle ~= "plain" then
+	local knownStyle = false
+	for _, style in ipairs(ns.OrbStyles) do
+		knownStyle = knownStyle or style.key == profile.orbStyle
+	end
+	if not knownStyle then
 		profile.orbStyle = PROFILE_DEFAULTS.orbStyle
 	end
 	if profile.castTextPlacement ~= "below" and profile.castTextPlacement ~= "above" then
@@ -484,6 +497,7 @@ function ns.ApplyProfile()
 	ns.UpdatePvPIndicator()
 	ns.UpdateCastTextPlacement()
 	ns.UpdateOrb()
+	ns.UpdateLowHealthGlow()
 	ns.RefreshCombatText()
 end
 
@@ -520,8 +534,28 @@ function ns.SetManaSparkShown(shown)
 	ns.UpdateManaSpark()
 end
 
+function ns.SetCastAnimated(animated)
+	ns.db.castAnimated = animated
+	ns.UpdateCastRingStyle()
+end
+
 function ns.SetSwingTimerShown(shown)
 	ns.db.showSwingTimer = shown
+	ns.UpdateSwingTimer()
+end
+
+function ns.SetLowHealthGlow(enabled)
+	ns.db.lowHealthGlow = enabled
+	ns.UpdateLowHealthGlow()
+end
+
+function ns.SetLowHealthThreshold(percent)
+	ns.db.lowHealthThreshold = percent
+	ns.UpdateLowHealthGlow()
+end
+
+function ns.SetGCDShown(shown)
+	ns.db.castGCD = shown
 	ns.UpdateSwingTimer()
 end
 

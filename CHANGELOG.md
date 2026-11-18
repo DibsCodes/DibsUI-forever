@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.4
+
+- The cast ring is animated: light flows round it while you cast, and slides back when a hit pushes your cast back. The swing timer flows the same way. Turn it off with Animated ring on the Cast Ring page
+- A green ring for the global cooldown after an instant ability, with the spell's name and icon. Casts come first, then the global cooldown, then the swing timer. Turn it off with Show global cooldown
+- A faint red glow round the orb and your bars when your health is low. Turn it on or off and set when it shows (20% by default) under Low health on the General page
+- A new orb style, Flat
+- Power Orb and Cast Ring have their own pages in the settings. On every page the text settings come after the other switches, and a text's settings are grouped under it
+- The default font is now Barlow Semi Condensed Bold. Black is still in the font list
+- The name above the target bar shows in full at once, like the player's since 0.3.3
+
 ## 0.3.3
 
 - First full release, no longer a beta. DibsUI-Options is a full release too, so the CurseForge app can install it along with DibsUI

@@ -87,11 +87,11 @@ local function CreateArtSlices(parent, layer, fileName, side, art)
 	return slices
 end
 
-local function LayoutArtSlices(slices, button, growth, centerDistance)
+local function LayoutArtSlices(slices, button, growth, centerDistance, height)
 	local art = button.spec.art
 	local edges = { art.start, art.start + art.sliceInner, art.start + art.sliceTip + growth, art.start + art.width + growth }
 	for i, slice in ipairs(slices) do
-		slice:SetSize(edges[i + 1] - edges[i], Layout.barQuadHeight)
+		slice:SetSize(edges[i + 1] - edges[i], height or Layout.barQuadHeight)
 		slice:ClearAllPoints()
 		slice:SetPoint("CENTER", button.body, "CENTER", button.side * ((edges[i] + edges[i + 1]) / 2 - centerDistance), 0)
 	end
@@ -117,6 +117,9 @@ local function LayoutBar(button)
 
 	LayoutArtSlices(button.backSlices, button, growth, centerDistance)
 	LayoutArtSlices(button.frameSlices, button, growth, centerDistance)
+	if button.glowSlices then
+		LayoutArtSlices(button.glowSlices, button, growth, centerDistance, Layout.glowQuadHeight)
+	end
 
 	local fillOuter = spec.fillOuter + growth
 	button.bar:SetSize(fillOuter - spec.fillInner, spec.fillHeight)
@@ -188,6 +191,16 @@ local function CreateBar(name, unit, spec, side, visualParent)
 	button.frameSlices = CreateArtSlices(overlay, "ARTWORK", spec.frame, side, spec.art)
 	bars[#bars + 1] = button
 	return button
+end
+
+-- The low health glow, behind the bar's back so only the part outside its outline shows.
+local function AddLowHealthGlow(button)
+	local slices = CreateArtSlices(button.body, "BACKGROUND", button.spec.glow, button.side, button.spec.art)
+	for _, slice in ipairs(slices) do
+		slice:SetDrawLayer("BACKGROUND", -8)
+		ns.AddLowHealthGlow(slice)
+	end
+	button.glowSlices = slices
 end
 
 -- Name and level sit above the bar, so they're capped to its width rather than running under the orb.
@@ -431,6 +444,7 @@ end
 
 local function CreatePlayerHealth()
 	local button = CreateBar("DibsUIPlayerHealth", "player", Layout.health, -1, ns.root)
+	AddLowHealthGlow(button)
 	local bar = button.bar
 	CreatePrediction(button, "player")
 	local color = ns.Colors.playerHealth
@@ -491,6 +505,7 @@ end
 local function CreatePetHealth()
 	local spec = Layout.pet
 	local button = CreateBar("DibsUIPetHealth", "pet", spec, -1, ns.root)
+	AddLowHealthGlow(button)
 	button:SetHitRectInsets(0, spec.hitInset, 0, 0)
 	local bar = button.bar
 	local color = ns.Colors.playerHealth

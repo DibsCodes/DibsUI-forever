@@ -39,6 +39,38 @@ end
 
 -- The text picker is no wider than this, so its dropdown sits near its label.
 local PICKER_WIDTH = 440
+-- The editor is one framed panel: the picker across its top, and the picked text's settings indented
+-- under it beside a gold line, so they read as belonging to that text.
+local EDITOR_PADDING = 12
+local EDITOR_INDENT = 22
+local EDITOR_TITLE_HEIGHT = 28
+
+-- DibsUI-Options' gold, or the game's from an older DibsUI-Options without it.
+local GOLD = W.GOLD or { 1, 0.82, 0 }
+
+local function CreateEditorPanel(content)
+	local panel = CreateFrame("Frame", nil, content)
+	local back = panel:CreateTexture(nil, "BACKGROUND")
+	back:SetAllPoints()
+	back:SetColorTexture(1, 1, 1, 0.035)
+	local edges = {
+		{ "TOPLEFT", "TOPRIGHT", nil, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 1 },
+		{ "TOPLEFT", "BOTTOMLEFT", 1, nil }, { "TOPRIGHT", "BOTTOMRIGHT", 1, nil },
+	}
+	for _, edge in ipairs(edges) do
+		local line = panel:CreateTexture(nil, "BORDER")
+		line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.22)
+		line:SetPoint(edge[1])
+		line:SetPoint(edge[2])
+		if edge[3] then line:SetWidth(edge[3]) else line:SetHeight(edge[4]) end
+	end
+	panel.accent = panel:CreateTexture(nil, "ARTWORK")
+	panel.accent:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.55)
+	panel.accent:SetWidth(2)
+	-- Larger and white, so it reads as the parent of the gold section headings under it.
+	panel.title = CreateLabel(panel, "GameFontHighlightLarge", "")
+	return panel
+end
 
 -- One of a frame's text spots at a time, picked from a dropdown: whether it shows, what it shows, and
 -- how it looks. keys are the spots it offers, in the order of ns.TextGroups. None of it is protected,
@@ -73,9 +105,9 @@ local function CreateTextEditor(content, keys, relayout)
 		ns.SetTextStyle(selected.key, part, value)
 	end
 
-	-- The picker sits right under the page heading that names these texts, so it has no heading of its own.
-	local pickCard = CreateCard(content)
-	pickCard.span = PICKER_WIDTH
+	local panel = CreateEditorPanel(content)
+	-- The picker sits at the top of the panel, right under the page heading that names these texts.
+	local pickCard = CreateCard(panel)
 	local fieldRow = pickCard:Add(CreateDropdownRow(pickCard, "Text to edit", nil, 260))
 	-- When a spot only shows some of the time, such as the druid mana, this says when.
 	local note = pickCard:Add(CreateHint(pickCard, ""), 4)
@@ -86,12 +118,12 @@ local function CreateTextEditor(content, keys, relayout)
 		refresh()
 	end)
 
-	local displayCard = CreateCard(content, "Display")
+	local displayCard = CreateCard(panel, "Display")
 	local showRow = displayCard:Add(CreateToggleRow(displayCard, "Show", function(checked) Set("enabled", checked) end))
 	local mouseoverRow = displayCard:Add(CreateToggleRow(displayCard, "Only on mouseover", function(checked) Set("mouseover", checked) end))
 	local formatRow = displayCard:Add(CreateDropdownRow(displayCard, "Shows"))
 
-	local fontCard = CreateCard(content, "Font")
+	local fontCard = CreateCard(panel, "Font")
 	local fontRow = fontCard:Add(CreateDropdownRow(fontCard, "Font"))
 	local outlineRow = fontCard:Add(CreateDropdownRow(fontCard, "Outline"))
 	local size = fontCard:Add(CreateSliderRow(fontCard, "Size", ns.TextSizeRange, FormatSize,
@@ -101,7 +133,7 @@ local function CreateTextEditor(content, keys, relayout)
 		end))
 
 	-- Moves the spot from where it normally sits, in UI units. Positive Y is up.
-	local positionCard = CreateCard(content, "Position")
+	local positionCard = CreateCard(panel, "Position")
 	local function OffsetRow(text, part)
 		return positionCard:Add(CreateSliderRow(positionCard, text, ns.TextOffsetRange, FormatSize,
 			function() return ns.GetTextOption(selected.key, part) end,
@@ -112,7 +144,7 @@ local function CreateTextEditor(content, keys, relayout)
 	local offsetX = OffsetRow("X offset", "offsetX")
 	local offsetY = OffsetRow("Y offset", "offsetY")
 
-	local colorCard = CreateCard(content, "Color")
+	local colorCard = CreateCard(panel, "Color")
 	local colorRow = colorCard:Add(CreateToggleRow(colorCard, "Custom color", function(checked)
 		Set("color", checked and { ns.GetTextDefaultColor(selected.key) } or nil)
 		refresh()
@@ -140,6 +172,7 @@ local function CreateTextEditor(content, keys, relayout)
 	function refresh()
 		local key = selected.key
 		fieldRow.dropdown:GenerateMenu()
+		panel.title:SetText(FieldLabel(selected) .. " settings")
 		note:SetText(selected.note or "")
 		if note:IsShown() ~= (selected.note ~= nil) then
 			note:SetShown(selected.note ~= nil)
@@ -213,7 +246,29 @@ local function CreateTextEditor(content, keys, relayout)
 			refresh()
 		end)
 
-	return { pickCard, displayCard, fontCard, positionCard, colorCard }, refresh, pickCard
+	-- Lays the panel out at the width the page gives it, and takes the height that comes to.
+	local settingsCards = { displayCard, fontCard, positionCard, colorCard }
+	function panel:FitWidth(width)
+		local y = EDITOR_PADDING
+		y = y + PlaceCard(pickCard, panel, EDITOR_PADDING, y, math.min(width - 2 * EDITOR_PADDING, PICKER_WIDTH))
+		y = y + SECTION_GAP
+		local left = EDITOR_PADDING + EDITOR_INDENT
+		local top = y
+		panel.title:ClearAllPoints()
+		panel.title:SetPoint("TOPLEFT", panel, "TOPLEFT", left, -y)
+		y = y + EDITOR_TITLE_HEIGHT
+		local bottom = LayoutCards(settingsCards, panel, left, y, width - left - EDITOR_PADDING)
+		panel.accent:ClearAllPoints()
+		panel.accent:SetPoint("TOPLEFT", panel, "TOPLEFT", EDITOR_PADDING + 6, -(top - 2))
+		panel.accent:SetPoint("BOTTOMLEFT", panel, "TOPLEFT", EDITOR_PADDING + 6, -bottom)
+		self:SetHeight(bottom + EDITOR_PADDING)
+	end
+
+	-- To the page it's one section on its own row.
+	local editor = CreateCard(content)
+	editor.span = 100000
+	editor:Add(panel)
+	return { editor }, refresh, pickCard
 end
 
 -- Pages -------------------------------------------------------------------------------------------
@@ -298,6 +353,20 @@ local function BuildGeneral(content)
 			SyncOpacity()
 		end)
 
+	local lowHealthCard = CreateCard(content, "Low health")
+	local lowHealth = lowHealthCard:Add(CreateToggleRow(lowHealthCard, "Glow when health is low", function(checked)
+		ns.SetLowHealthGlow(checked)
+		lowHealthCard:Sync()
+	end))
+	local threshold = lowHealthCard:Add(CreateSliderRow(lowHealthCard, "Glow below", ns.LowHealthRange, FormatPercent,
+		function() return ns.db.lowHealthThreshold end,
+		function(value) ns.SetLowHealthThreshold(value) end), 4)
+	function lowHealthCard:Sync()
+		lowHealth.toggle:SetChecked(ns.db.lowHealthGlow)
+		threshold:Sync()
+		threshold:SetEnabled(ns.db.lowHealthGlow)
+	end
+
 	local isLocked = false
 	local options = {}
 
@@ -333,6 +402,7 @@ local function BuildGeneral(content)
 		pvpIcon.toggle:SetChecked(ns.db.showPvPIcon)
 		masterRow.dropdown:GenerateMenu()
 		SyncOpacity()
+		lowHealthCard:Sync()
 		scale:Sync()
 		width:Sync()
 		outerWidth:Sync()
@@ -347,7 +417,7 @@ local function BuildGeneral(content)
 		SyncWidthLocks()
 	end
 
-	options.Layout = CreateFlow(content, { lookCard, sizeCard, opacityCard })
+	options.Layout = CreateFlow(content, { lookCard, sizeCard, opacityCard, lowHealthCard })
 	return options
 end
 
@@ -445,9 +515,9 @@ local CAST_PLACEMENTS = {
 	{ key = "above", label = "Above the orb" },
 }
 
--- The orb and the cast ring around it. None of it is protected, so it all works in combat.
-local function BuildOrb(content, _, relayout)
-	local orbCard = CreateCard(content) -- under the Power orb heading
+-- The orb's own settings, then its texts. None of it is protected, so it all works in combat.
+local function BuildPowerOrb(content, _, relayout)
+	local orbCard = CreateCard(content, "Look & feel")
 	local styleRow = orbCard:Add(CreateDropdownRow(orbCard, "Liquid"))
 	local styleHint = orbCard:Add(CreateHint(orbCard, ""))
 	local spark = orbCard:Add(CreateToggleRow(orbCard, "Show five second rule timer", ns.SetManaSparkShown), 4)
@@ -473,7 +543,23 @@ local function BuildOrb(content, _, relayout)
 
 	local orbCards, orbRefresh = CreateTextEditor(content, { "orbCenter", "orbMana" }, relayout)
 
-	local castCard = CreateCard(content) -- under the Cast ring heading
+	local items = { orbCard, CreatePageHeader(content, "Orb texts") }
+	AppendAll(items, orbCards)
+
+	return {
+		Sync = Joined(function()
+			SyncStyle()
+			spark.toggle:SetChecked(ns.db.showManaSpark)
+			druidMana.toggle:SetChecked(ns.GetTextOption("orbMana", "enabled"))
+		end, orbRefresh),
+		SetCombatLocked = function() end,
+		Layout = CreateFlow(content, items),
+	}
+end
+
+-- The cast ring round the orb, then the cast's texts. None of it is protected, so it all works in combat.
+local function BuildCastRing(content, _, relayout)
+	local castCard = CreateCard(content, "Look & feel")
 	local placementRow = castCard:Add(CreateDropdownRow(castCard, "Spell name and time"))
 	SetUpChoiceMenu(placementRow.dropdown, CAST_PLACEMENTS,
 		function() return ns.db.castTextPlacement end,
@@ -481,31 +567,23 @@ local function BuildOrb(content, _, relayout)
 	local swing = castCard:Add(CreateToggleRow(castCard, "Show swing timer", ns.SetSwingTimerShown), 4)
 	-- PLACEHOLDER castLatency: "Show latency" - the part of the cast lost to latency, shaded at the ring's end.
 	castCard:Add(CreatePlaceholderRow(castCard, "Show latency", "castLatency"))
-	-- PLACEHOLDER castAnimated: "Animated ring" - animated textures on the cast ring.
-	castCard:Add(CreatePlaceholderRow(castCard, "Animated ring", "castAnimated"))
-	-- PLACEHOLDER castGCD: "Show global cooldown" - the global cooldown on the ring.
-	castCard:Add(CreatePlaceholderRow(castCard, "Show global cooldown", "castGCD"))
+	local animatedRing = castCard:Add(CreateToggleRow(castCard, "Animated ring", ns.SetCastAnimated))
+	local gcd = castCard:Add(CreateToggleRow(castCard, "Show global cooldown", ns.SetGCDShown))
+	local icon = castCard:Add(CreateToggleRow(castCard, "Show spell icon beside the name", ns.SetCastIconShown))
 
-	local castCards, castRefresh, castPick = CreateTextEditor(content, { "castName", "castTime" }, relayout)
-	-- The spell icon belongs with the cast's texts, beside the spell name.
-	local icon = castPick:Add(CreateToggleRow(castPick, "Show spell icon beside the name", ns.SetCastIconShown), 8)
+	local castCards, castRefresh = CreateTextEditor(content, { "castName", "castTime" }, relayout)
 
-	local items = { CreatePageHeader(content, "Power orb"), orbCard, CreatePageHeader(content, "Orb text") }
-	AppendAll(items, orbCards)
-	items[#items + 1] = CreatePageHeader(content, "Cast ring")
-	items[#items + 1] = castCard
-	items[#items + 1] = CreatePageHeader(content, "Cast text")
+	local items = { castCard, CreatePageHeader(content, "Cast texts") }
 	AppendAll(items, castCards)
 
 	return {
 		Sync = Joined(function()
-			SyncStyle()
-			spark.toggle:SetChecked(ns.db.showManaSpark)
-			druidMana.toggle:SetChecked(ns.GetTextOption("orbMana", "enabled"))
 			placementRow.dropdown:GenerateMenu()
 			swing.toggle:SetChecked(ns.db.showSwingTimer)
+			animatedRing.toggle:SetChecked(ns.db.castAnimated)
+			gcd.toggle:SetChecked(ns.db.castGCD)
 			icon.toggle:SetChecked(ns.db.showCastIcon)
-		end, orbRefresh, castRefresh),
+		end, castRefresh),
 		SetCombatLocked = function() end,
 		Layout = CreateFlow(content, items),
 	}
@@ -966,7 +1044,8 @@ ns.ConfigTabs = {
 	{ label = "General", build = BuildGeneral },
 	{ label = "Player & Pet Frame", build = BuildPlayer },
 	{ label = "Target Frame", build = BuildTarget },
-	{ label = "Power Orb and Cast Ring", build = BuildOrb },
+	{ label = "Power Orb", build = BuildPowerOrb },
+	{ label = "Cast Ring", build = BuildCastRing },
 	{ label = "Buffs & Debuffs", build = BuildAuras },
 	{ label = "Incoming Combat Text", build = BuildCombatText },
 }

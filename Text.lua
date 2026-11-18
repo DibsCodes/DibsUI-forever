@@ -61,7 +61,7 @@ end
 
 -- DibsUI's own font, under the SIL Open Font License (Media/Fonts/OFL.txt). It's the master font
 -- until another is picked.
-ns.DEFAULT_MASTER_FONT = ns.Media("Fonts\\BarlowSemiCondensed-Black.ttf")
+ns.DEFAULT_MASTER_FONT = ns.Media("Fonts\\BarlowSemiCondensed-Bold.ttf")
 
 -- The master font is what every text uses unless it has a font of its own.
 function ns.GetMasterFont()
@@ -79,9 +79,10 @@ for _, outline in ipairs(ns.Outlines) do
 	ns.OutlinesByKey[outline.key] = outline
 end
 
--- DibsUI's font, then the game's own. Only the ones this client can load are offered.
+-- DibsUI's fonts, then the game's own. Only the ones this client can load are offered.
 local GAME_FONTS = {
-	{ name = "Barlow Semi Condensed Black", path = ns.DEFAULT_MASTER_FONT },
+	{ name = "Barlow Semi Condensed Bold", path = ns.DEFAULT_MASTER_FONT },
+	{ name = "Barlow Semi Condensed Black", path = ns.Media("Fonts\\BarlowSemiCondensed-Black.ttf") },
 	{ name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
 	{ name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
 	{ name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
@@ -274,6 +275,29 @@ function ns.MoveText(text, point, relativeTo, relativePoint, x, y)
 	ns.PlaceText(text, point, relativeTo, relativePoint, x, y)
 end
 
+-- A font string remembers how wide its text is. At login the font can still be loading when a name is
+-- first measured, and setting the same text again keeps that wrong width, so each piece is cleared
+-- first to make the game measure it afresh.
+local function FreshWidth(fontString, value)
+	fontString:SetText("")
+	fontString:SetText(value)
+	return fontString:GetUnboundedStringWidth()
+end
+
+-- The widths of a name's first name, last name and level (with the gap before it, or 0 without one).
+local function MeasureRow(text)
+	local level = text.levelValue
+	local nameWidth = FreshWidth(text, text.firstName)
+	local surnameWidth = FreshWidth(text.surname, text.lastName)
+	local levelWidth = 0
+	if level ~= nil then
+		levelWidth = NAME_GAP + FreshWidth(text.level, level)
+	else
+		text.level:SetText(nil)
+	end
+	return nameWidth, surnameWidth, levelWidth
+end
+
 -- Lays a name out in its box: the plain name, or "First Last" with the level after when last names are
 -- on. Centring the pieces means measuring them, and text widths are secret while the text is, so a
 -- secret name keeps the plain layout without its last name. The first name shortens if the row won't fit.
@@ -287,11 +311,7 @@ local function LayoutName(text)
 	local useRow = ns.db.showSurnames and not issecretvalue(name) and not issecretvalue(surname)
 		and surname ~= nil and surname ~= ""
 	if useRow then
-		text:SetText(name)
-		text.surname:SetText(surname)
-		text.level:SetText(level)
-		local nameWidth, surnameWidth = text:GetUnboundedStringWidth(), text.surname:GetUnboundedStringWidth()
-		local levelWidth = level ~= nil and NAME_GAP + text.level:GetUnboundedStringWidth() or 0
+		local nameWidth, surnameWidth, levelWidth = MeasureRow(text)
 		local boxWidth = box:GetWidth()
 		if issecretvalue(nameWidth) or issecretvalue(surnameWidth) or issecretvalue(levelWidth) or issecretvalue(boxWidth) then
 			useRow = false
@@ -302,11 +322,14 @@ local function LayoutName(text)
 		else
 			text.measured = { nameWidth, surnameWidth, levelWidth }
 			local total = nameWidth + NAME_GAP + surnameWidth + levelWidth
+			-- The first name only gets a fixed width when it has to shorten. Otherwise it sizes itself,
+			-- so a width measured wrong can only put the row off centre, never hide the name.
 			if boxWidth > 0 and total > boxWidth then
-				nameWidth = math.max(nameWidth - (total - boxWidth), 1)
+				text:SetWidth(math.max(nameWidth - (total - boxWidth), 1))
 				total = boxWidth
+			else
+				text:SetWidth(0)
 			end
-			text:SetWidth(nameWidth)
 			text:SetPoint("BOTTOMLEFT", box, "BOTTOM", -total / 2, 0)
 		end
 	end
@@ -323,22 +346,20 @@ local function LayoutName(text)
 	UpdateVisibility(text)
 end
 
--- At login the font can still be loading when a name is first laid out, so it measures too narrow or
--- empty and the row cuts the first name off. For a while after each loading screen, names in a row are
--- measured again every frame and laid out again when a width changes.
+-- The font can still be loading when a name is first laid out, at login or the first time a size is
+-- used, such as a new target's name, so it measures too narrow or empty. For a while after each loading
+-- screen, and for a few seconds after a name is shown, names in a row are measured afresh a few times a
+-- second and laid out again when a width changes.
 local nameTexts = {}
-local SETTLE_SECONDS = 10
-local settleUntil = 0
+local SETTLE_SECONDS = 30
+local NEW_NAME_SETTLE_SECONDS = 5
+local SETTLE_INTERVAL = 0.25
+local settleUntil, nextCheck = 0, 0
 local settleWatcher = CreateFrame("Frame")
 settleWatcher:Hide()
 
 local function MeasureChanged(text)
-	local level = text.levelValue
-	local widths = {
-		text:GetUnboundedStringWidth(),
-		text.surname:GetUnboundedStringWidth(),
-		level ~= nil and NAME_GAP + text.level:GetUnboundedStringWidth() or 0,
-	}
+	local widths = { MeasureRow(text) }
 	for i, width in ipairs(widths) do
 		if issecretvalue(width) then
 			return false
@@ -351,14 +372,22 @@ local function MeasureChanged(text)
 end
 
 settleWatcher:SetScript("OnUpdate", function(self)
-	if GetTime() > settleUntil then
-		self:Hide()
+	local now = GetTime()
+	if now < nextCheck then
 		return
 	end
+	nextCheck = now + SETTLE_INTERVAL
+	local settling = false
 	for _, text in ipairs(nameTexts) do
-		if text.remeasure or (text.usesSurname and text.measured and MeasureChanged(text)) then
-			LayoutName(text)
+		if now <= settleUntil or now <= (text.settleUntil or 0) then
+			settling = true
+			if text.remeasure or (text.usesSurname and text.measured and MeasureChanged(text)) then
+				LayoutName(text)
+			end
 		end
+	end
+	if not settling then
+		self:Hide()
 	end
 end)
 
@@ -366,6 +395,7 @@ settleWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
 settleWatcher:RegisterEvent("LOADING_SCREEN_DISABLED")
 settleWatcher:SetScript("OnEvent", function(self)
 	settleUntil = GetTime() + SETTLE_SECONDS
+	nextCheck = 0
 	self:Show()
 end)
 
@@ -448,6 +478,10 @@ end
 function ns.ShowName(text, name, surname, level)
 	text.firstName, text.lastName, text.levelValue = name, surname, level
 	LayoutName(text)
+	if text.usesSurname or text.remeasure then
+		text.settleUntil = GetTime() + NEW_NAME_SETTLE_SECONDS
+		settleWatcher:Show()
+	end
 end
 
 -- The name's box changed width, so the row has to fit again.

@@ -42,9 +42,9 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 
 **Orb (center)**
 - Fills from the bottom with your power, with the amount in the middle
-- Mana is a deep blue liquid that slowly swirls, and rage is thick, dark blood. Other power types are a liquid in their own color
+- Mana is a deep blue liquid that slowly swirls, and rage is thick, dark blood. Other power types are a liquid in their own color. The liquid can also be still, or a flat fill in the power's color
 - A thin glowing line marks the top of the liquid
-- Druids in bear or cat form see their mana percentage under the rage or energy, in smaller blue text. It can be turned off or changed on the Power Orb and Cast Ring page
+- Druids in bear or cat form see their mana percentage under the rage or energy, in smaller blue text. It can be turned off or changed on the Power Orb page
 - Numbers are shortened: `999`, `1.2k`, `12k`, `1.2m`
 - Every text on the bars and orb can be changed or turned off in the settings
 
@@ -57,10 +57,18 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - After a successful spell that costs mana, a gold spark circles the orb's inner edge once over five seconds, showing the five second rule
 - Casting again restarts it, and potions, food, wands and free spells don't start it
 
+**Low health glow**
+- A faint red glow outlines the orb, your health bar and your pet's bar while your health is low, below 20% unless you change it
+- Keeps working in combat, when addons can't read health themselves
+- Can be turned off, and the threshold set from 5% to 50%, on the General page
+
 **Cast ring**
 - Fills clockwise around the orb while casting, and drains clockwise while channeling
+- Light flows round the ring while it runs. It can be turned off for a plain ring
+- When a cast is pushed back, the ring slides back smoothly instead of jumping
 - Shows a round spell icon, the spell name and `current / total` time below the orb, or above it if you prefer
 - The spell name and time have their own font, outline, size and color settings, and the icon can be turned off
+- After an instant ability, runs in green for the global cooldown, with the ability's icon and name. It can be turned off
 - Runs in grey for your main hand swing timer when you aren't casting. It can be turned off
 
 **Player buffs**
@@ -163,7 +171,7 @@ At the top of the window, on every page:
 | Show last names | Shows last names beside first names, smaller and off-white. |
 | Show incoming heals and absorbs | Turns heal and absorb prediction on the player and target bars on or off. |
 | Show PvP timer | Turns the PvP icon and its countdown under the player bar on or off. |
-| Master font | The font every text uses unless it has one of its own, buff texts included. It starts as Barlow Semi Condensed Black, which comes with DibsUI. |
+| Master font | The font every text uses unless it has one of its own, buff texts included. It starts as Barlow Semi Condensed Bold, which comes with DibsUI along with Barlow Semi Condensed Black. |
 | Use for all text | Clears every text's own font, so they all use the master font. Combat text is given the master font too. |
 
 **Size and position**
@@ -187,6 +195,13 @@ The chain beside each width shows whether the pair is linked. Changing one bar's
 
 Unlocked frames always show at 100%, so you can see them to move them.
 
+**Low health**
+
+| Setting | What it does |
+|---|---|
+| Glow when health is low | Turns the red low health glow round the orb and your bars on or off. |
+| Glow below | The health the glow starts at, from 5% to 50%. 20% to start with. |
+
 ### Player & Pet Frame
 
 | Setting | What it does |
@@ -207,31 +222,32 @@ Under them, **Player texts** and **Pet texts** edit those bars' texts, as descri
 
 Under them, **Target texts** (the target bar and its power bar) and **Target of target texts**.
 
-### Power Orb and Cast Ring
-
-**Power orb**
+### Power Orb
 
 | Setting | What it does |
 |---|---|
-| Liquid | **Animated**, the swirling liquid in the power's own style, or **Plain**, a still liquid with no swirls. |
+| Liquid | **Animated**, the swirling liquid in the power's own style, **Plain**, a still liquid with no swirls, or **Flat**, a flat fill in the power's color. |
 | Show five second rule timer | Turns the mana spark on or off. |
 | Show druid mana in bear and cat form | Turns the druid mana under the orb on or off. It's the same as that text's Show switch. |
 
-Under them, **Orb text** edits the power and druid mana texts.
+Under them, **Orb texts** edits the power and druid mana texts.
 
-**Cast ring**
+### Cast Ring
 
 | Setting | What it does |
 |---|---|
 | Spell name and time | Below the orb or above it. Either way the spell name sits over the time. |
 | Show swing timer | Turns the grey main hand swing on the ring on or off. |
-| Show latency, Animated ring, Show global cooldown | Not built yet, so they're greyed out. |
+| Animated ring | Light flows round the ring during casts, the global cooldown and the swing timer. Off, the ring is plain. |
+| Show global cooldown | After an instant ability, the ring shows the global cooldown in green, with the ability's icon and name. |
+| Show spell icon beside the name | Shows the spell's round icon beside its name. |
+| Show latency | Not built yet, so it's greyed out. |
 
-Under them, **Cast text** edits the spell name and time, with **Show spell icon beside the name**.
+Under them, **Cast texts** edits the spell name and time.
 
 ### Texts
 
-Each frame's page lists its own texts. Pick one from **Text to edit**, then change it in the sections below: Display, Font, Position and Color.
+Each frame's page lists its own texts, after its other settings, in one framed panel. Pick one from **Text to edit**, and its settings show under it: Display, Font, Position and Color.
 
 | Setting | What it does |
 |---|---|
@@ -386,4 +402,4 @@ The buff frames are newer still: the simulator can't show real buffs in Blizzard
 
 ## License
 
-[MIT](LICENSE). The bundled font, Barlow Semi Condensed Black, is by the Barlow Project Authors under the [SIL Open Font License](Media/Fonts/OFL.txt).
+[MIT](LICENSE). The bundled fonts, Barlow Semi Condensed Bold and Black, are by the Barlow Project Authors under the [SIL Open Font License](Media/Fonts/OFL.txt).
