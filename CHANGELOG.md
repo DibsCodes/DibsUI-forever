@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.6
+
+- Bronze theme: the health, power and pet bar borders are redrawn at the tips, so the bar's fill no longer shows through the border at full health
+- Bronze theme: the health and power borders no longer jump from bright to dark partway along, and the dark patch under the eagle's wing is gone
+
 ## 0.3.5
 
 - New Theme setting on the General page: Default (brushed silver and gold) or Bronze (rough cast bronze with a carved eagle, and a slightly bigger orb rim). Each profile keeps its own theme, and it switches straight away, in combat too
