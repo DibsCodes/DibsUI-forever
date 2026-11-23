@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.8
+
+- DibsUI now shows the DibsUI logo next to its name in the AddOns list, the same as DibsUI-Options and DibsUI-Party
+
 ## 0.3.7
 
 - New focus frame, styled like a DibsUI-Party member: your focus's portrait in an orb, a tall health bar and a power bar. Drag it while DibsUI is unlocked. With no focus it shows you as a stand-in so you can place it. It has its own Focus Frame page in the settings with width, scale and its texts
