@@ -93,8 +93,19 @@ local function ApplyRestingAlpha(root, preset)
 	end
 end
 
+-- The main frames and the focus frame fade together. SetAlpha takes a secret value from a curve too.
+local fading = {}
+local both = {
+	SetAlpha = function(_, alpha)
+		for _, frame in ipairs(fading) do
+			frame:SetAlpha(alpha)
+		end
+	end,
+}
+
 function ns.UpdateOpacity()
-	local root = ns.root
+	fading[1], fading[2] = ns.root, ns.focusRoot
+	local root = both
 	local mode = ns.db.opacityMode
 	local preset = PRESETS[mode]
 	if not ns.db.locked then

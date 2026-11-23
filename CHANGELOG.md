@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.7
+
+- New focus frame, styled like a DibsUI-Party member: your focus's portrait in an orb, a tall health bar and a power bar. Drag it while DibsUI is unlocked. With no focus it shows you as a stand-in so you can place it. It has its own Focus Frame page in the settings with width, scale and its texts
+- The ring round the focus's portrait is its cast bar: gold for casts, teal for channels, grey when the cast can't be interrupted. The spell's icon shows in the portrait, with its name and time under the orb
+- When your focus is interrupted it says "Interrupted", with the name of whoever did it in their class colour
+- The focus frame fades while your focus is out of range. Turn it off with Fade when out of range
+- Focus buffs and debuffs, set up like the target's on the Buffs & Debuffs page. Buffs can attach to the new "DibsUI focus frame" point
+- Turn the whole focus frame off with Show DibsUI focus frame to use Blizzard's focus frame instead
+
 ## 0.3.6
 
 - Bronze theme: the health, power and pet bar borders are redrawn at the tips, so the bar's fill no longer shows through the border at full health

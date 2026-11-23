@@ -525,6 +525,43 @@ local function BuildTarget(content, _, relayout)
 	}
 end
 
+-- The focus frame has its own place and scale, so its Look & feel card has both, and no linked widths.
+-- They move a secure button, so they're locked in combat like the other frames' widths.
+local function BuildFocus(content, _, relayout)
+	local lookCard = CreateCard(content, "Look & feel")
+	local enabled = lookCard:Add(CreateToggleRow(lookCard, "Show DibsUI focus frame", function(checked)
+		ns.SetFocusEnabled(checked)
+	end))
+	lookCard:Add(CreateHint(lookCard, "Off, Blizzard's focus frame shows instead, along with its own buffs and debuffs. Can't be changed in combat."), 4)
+	local width = lookCard:Add(CreateSliderRow(lookCard, "Focus bar width", ns.WidthRange, FormatScale,
+		function() return ns.db.focusWidth end, ns.SetFocusWidth))
+	local scale = lookCard:Add(CreateSliderRow(lookCard, "Focus frame scale", ns.ScaleRange, FormatScale,
+		function() return ns.db.focusScale end, ns.SetFocusScale))
+	local rangeFade = lookCard:Add(CreateToggleRow(lookCard, "Fade when out of range", ns.SetFocusRangeFade), 4)
+	lookCard:Add(CreateHint(lookCard,
+		"Press Unlock frames at the top of this window to drag the focus frame. With no focus it shows you as a stand-in, casting, so you can see its texts."), 8)
+
+	local focusCards, focusRefresh = CreateTextEditor(content,
+		{ "focusName", "focusLevel", "focusRight", "focusPowerRight", "focusCastName", "focusCastTime" }, relayout)
+	local items = { lookCard, CreatePageHeader(content, "Focus texts") }
+	AppendAll(items, focusCards)
+
+	return {
+		Sync = Joined(function()
+			enabled.toggle:SetChecked(ns.db.focusEnabled)
+			width:Sync()
+			scale:Sync()
+			rangeFade.toggle:SetChecked(ns.db.focusRangeFade)
+		end, focusRefresh),
+		SetCombatLocked = function(locked)
+			enabled:SetEnabled(not locked)
+			width:SetEnabled(not locked)
+			scale:SetEnabled(not locked)
+		end,
+		Layout = CreateFlow(content, items),
+	}
+end
+
 local CAST_PLACEMENTS = {
 	{ key = "below", label = "Below the orb" },
 	{ key = "above", label = "Above the orb" },
@@ -1059,6 +1096,7 @@ ns.ConfigTabs = {
 	{ label = "General", build = BuildGeneral },
 	{ label = "Player & Pet Frame", build = BuildPlayer },
 	{ label = "Target Frame", build = BuildTarget },
+	{ label = "Focus Frame", build = BuildFocus },
 	{ label = "Power Orb", build = BuildPowerOrb },
 	{ label = "Cast Ring", build = BuildCastRing },
 	{ label = "Buffs & Debuffs", build = BuildAuras },

@@ -24,6 +24,13 @@ local PROFILE_DEFAULTS = {
 	totWidth = 1,
 	outerWidthsLinked = true,
 	showTargetOfTarget = true,
+	-- The focus frame has its own place and scale. Its width is a multiple of its default, like the bars'.
+	focusWidth = 1,
+	focusScale = 1,
+	focusEnabled = true, -- off, Blizzard's focus frame is used instead
+	focusRangeFade = true, -- the focus frame fades while out of range
+	focusX = -560, -- its orb centre, relative to the bottom centre of the screen, in UIParent units
+	focusY = 580,
 	showSurnames = false,
 	showHealPrediction = true,
 	showPvPIcon = true,
@@ -141,6 +148,13 @@ function ns.CleanProfile(profile)
 		end
 		profile[key] = Clamp(profile[key], ns.WidthRange)
 	end
+	for _, key in ipairs({ "focusWidth", "focusScale", "focusX", "focusY" }) do
+		if type(profile[key]) ~= "number" then
+			profile[key] = PROFILE_DEFAULTS[key]
+		end
+	end
+	profile.focusWidth = Clamp(profile.focusWidth, ns.WidthRange)
+	profile.focusScale = Clamp(profile.focusScale, ns.ScaleRange)
 	for _, key in ipairs({ "widthsLinked", "outerWidthsLinked" }) do
 		if type(profile[key]) ~= "boolean" then
 			profile[key] = PROFILE_DEFAULTS[key]
@@ -160,7 +174,7 @@ function ns.CleanProfile(profile)
 	if type(profile.masterFont) ~= "string" then
 		profile.masterFont = nil
 	end
-	for _, key in ipairs({ "showPet", "showManaSpark", "showSwingTimer", "showCastIcon", "castAnimated", "castGCD", "lowHealthGlow" }) do
+	for _, key in ipairs({ "showPet", "showManaSpark", "showSwingTimer", "showCastIcon", "castAnimated", "castGCD", "lowHealthGlow", "focusEnabled", "focusRangeFade" }) do
 		if type(profile[key]) ~= "boolean" then
 			profile[key] = PROFILE_DEFAULTS[key]
 		end
@@ -326,6 +340,7 @@ end
 
 local function UpdateMover()
 	mover:SetShown(not ns.db.locked and not InCombatLockdown())
+	ns.UpdateFocusMover()
 	ns.UpdateOpacity()
 	ns.UpdateAuraMovers()
 	ns.UpdateCombatTextMover()
@@ -495,6 +510,7 @@ function ns.ApplyProfile()
 	ns.UpdatePetShown()
 	ns.UpdateBarWidths()
 	LayoutMover()
+	ns.ApplyFocusProfile()
 	UpdateMover()
 	ns.RefreshAllText()
 	ns.RefreshAuraFrames()
@@ -597,6 +613,7 @@ end
 function ns.SetCastAnimated(animated)
 	ns.db.castAnimated = animated
 	ns.UpdateCastRingStyle()
+	ns.UpdateFocusCastStyle()
 end
 
 function ns.SetSwingTimerShown(shown)

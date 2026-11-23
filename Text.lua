@@ -26,6 +26,18 @@ ns.TextGroups = {
 		{ key = "totName", label = "Above", shows = "Name", defaultColor = "Class or reaction color" },
 		{ key = "totLevel", label = "Top right", shows = "Level", defaultColor = "Difficulty color" },
 	} },
+	{ label = "Focus bar", fields = {
+		{ key = "focusName", label = "Above", shows = "Name", defaultColor = "Class or reaction color" },
+		{ key = "focusLevel", label = "Top right of the orb", shows = "Level", defaultColor = "Difficulty color" },
+		{ key = "focusRight", label = "Right side", values = "health", defaultFormat = "percentCurrent", defaultColor = "White" },
+	} },
+	{ label = "Focus power bar", fields = {
+		{ key = "focusPowerRight", label = "Right side", values = "power", defaultFormat = "current", defaultColor = "White" },
+	} },
+	{ label = "Focus cast", fields = {
+		{ key = "focusCastName", label = "Spell name", shows = "Spell name, under the orb", defaultColor = "White" },
+		{ key = "focusCastTime", label = "Time", shows = "Time, under the spell name", defaultColor = "White" },
+	} },
 	{ label = "Orb", fields = {
 		{ key = "orbCenter", label = "Center", values = "power", defaultFormat = "current", defaultColor = "White" },
 		{ key = "orbMana", label = "Druid mana", values = "power", defaultFormat = "percent", defaultColor = "Light blue",

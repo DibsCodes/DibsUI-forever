@@ -50,6 +50,8 @@ ns.AuraAnchorTargets = {
 	{ key = "minimap", label = "Minimap" },
 	-- Moves up above the pet bar and its name while there's a pet.
 	{ key = "player", label = "DibsUI player bar" },
+	-- The focus frame's bars, from the inner end of the health bar to its tip, health top to power bottom.
+	{ key = "focus", label = "DibsUI focus frame" },
 }
 
 -- The five groups the settings list. Only the ones marked built exist so far. Anchored groups sit on a
@@ -62,6 +64,9 @@ ns.AuraGroups = {
 	{ key = "targetBuffs", label = "Target buffs", built = true },
 	{ key = "targetDebuffs", label = "Target debuffs", built = true, anchored = true, hasOwnSize = true,
 		anchorNote = "Sits above the target bar, as wide as it and clear of its name and level, and fills right, then up. Your own debuffs come first, at their own size. Shows while you have a target." },
+	{ key = "focusBuffs", label = "Focus buffs", built = true },
+	{ key = "focusDebuffs", label = "Focus debuffs", built = true, anchored = true, hasOwnSize = true,
+		anchorNote = "Sits above the focus bar, as wide as it and clear of its name, and fills right, then up. Your own debuffs come first, at their own size. Shows while you have a focus." },
 }
 
 local function ByKey(list)
@@ -154,6 +159,33 @@ local GROUP_DEFAULTS = {
 		enabled = true,
 		iconSize = 24,
 		ownIconSize = 32,
+		spacing = 4,
+		textSize = 10,
+		textColor = { 1, 0.82, 0 },
+		textX = 0,
+		textY = 0,
+	},
+	-- Under the focus frame's bars, filling right. A little smaller than the target's, like the frame.
+	focusBuffs = {
+		enabled = true,
+		iconSize = 22,
+		spacing = 4,
+		growth = "RIGHT_DOWN",
+		frameSize = 180,
+		point = "TOPLEFT",
+		anchorTo = "focus",
+		anchorPoint = "BOTTOMLEFT",
+		x = 6,
+		y = -4,
+		textSize = 10,
+		textColor = { 1, 0.82, 0 },
+		textX = 0,
+		textY = 0,
+	},
+	focusDebuffs = {
+		enabled = true,
+		iconSize = 22,
+		ownIconSize = 28,
 		spacing = 4,
 		textSize = 10,
 		textColor = { 1, 0.82, 0 },
@@ -337,6 +369,8 @@ local function GetAnchorTarget(key)
 		return Minimap
 	elseif key == "player" then
 		return ns.playerAuraAnchor or UIParent
+	elseif key == "focus" then
+		return ns.focusAuraAnchor or UIParent
 	end
 	return UIParent
 end
@@ -464,6 +498,16 @@ local GROUP_SPECS = {
 			{ name = "others", sizeField = "iconSize", filters = { isFromPlayerOrPlayerPet = false } },
 		},
 	},
+	-- The focus's, handled exactly as the target's.
+	focusBuffs = { unit = "focus", filter = "HELPFUL", stealable = true },
+	focusDebuffs = {
+		unit = "focus", filter = "HARMFUL", growth = "RIGHT_UP", bar = "DibsUIFocusFrame",
+		texts = { "focusName" }, dispel = true,
+		auraGroups = {
+			{ name = "own", sizeField = "ownIconSize", filters = { isFromPlayerOrPlayerPet = true } },
+			{ name = "others", sizeField = "iconSize", filters = { isFromPlayerOrPlayerPet = false } },
+		},
+	},
 }
 
 local groups = {}
@@ -473,8 +517,15 @@ local function IsMasqueSkinned(group)
 end
 
 -- Groups that aren't built yet count as off.
+-- The focus groups go with DibsUI's focus frame: with it switched off, Blizzard's focus frame shows the
+-- focus's auras itself.
+local FOCUS_GROUPS = { focusBuffs = true, focusDebuffs = true }
+
 local function IsGroupEnabled(groupKey)
 	local settings = ns.db.auras[groupKey]
+	if FOCUS_GROUPS[groupKey] and not ns.db.focusEnabled then
+		return false
+	end
 	return settings ~= nil and settings.enabled == true
 end
 
@@ -623,10 +674,10 @@ local function ReadTestBuffs(groupKey)
 	local function Add(buffs)
 		AddTestBuffs(list, buffs)
 	end
-	if groupKey == "targetDebuffs" then
+	if groupKey == "targetDebuffs" or groupKey == "focusDebuffs" then
 		Add(TEST_TARGET_DEBUFFS)
 		return list
-	elseif groupKey == "targetBuffs" then
+	elseif groupKey == "targetBuffs" or groupKey == "focusBuffs" then
 		Add(TEST_TARGET_BUFFS)
 		return list
 	elseif groupKey == "playerDebuffs" then
@@ -875,6 +926,13 @@ local function GetBarBody(group)
 	return bar and bar.body
 end
 
+-- How many of the group's units make one of its bar's. The focus frame has its own scale, while its
+-- debuffs are sized in UI units like every other group; on the main frames this is 1.
+local function GetBarUnitRatio(group, body)
+	local holderScale = group.holder:GetEffectiveScale()
+	return holderScale > 0 and body:GetEffectiveScale() / holderScale or 1
+end
+
 -- The aura groups in a group's container, with what each lets through right now.
 local function GetAuraGroups(group)
 	return group.spec.auraGroups or { { name = "buffs", sizeField = "iconSize", filters = GetCandidateFilters(group.key) } }
@@ -914,7 +972,7 @@ local function GetLayout(group, mode)
 		layout.spacing = settings.spacing
 		if group.spec.bar then
 			local body = GetBarBody(group)
-			layout.lineSize = body and body:GetWidth() or 200
+			layout.lineSize = body and body:GetWidth() * GetBarUnitRatio(group, body) or 200
 		else
 			layout.lineSize = settings.frameSize
 		end
@@ -1079,7 +1137,8 @@ local function PlaceHolder(group)
 	if group.spec.bar then
 		local body = GetBarBody(group)
 		if body then
-			holder:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", 0, GetTextClearance(group.spec.texts))
+			-- The clearance is in the bar's units, and an offset is in the holder's.
+			holder:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", 0, GetTextClearance(group.spec.texts) * GetBarUnitRatio(group, body))
 		end
 		return
 	end
@@ -1153,12 +1212,13 @@ end
 local function UpdateGroup(group)
 	local settings = group.settings
 	local mode = GetMode(group)
-	group.holder:SetShown(settings.enabled)
+	local enabled = IsGroupEnabled(group.key)
+	group.holder:SetShown(enabled)
 	-- Only the container for the mode in use runs. Test mode shows DibsUI's own icons instead.
 	for containerMode, container in pairs(group.containers) do
-		container:SetShown(settings.enabled and not ns.auraTestMode and containerMode == mode)
+		container:SetShown(enabled and not ns.auraTestMode and containerMode == mode)
 	end
-	if not settings.enabled then
+	if not enabled then
 		HideTestIcons(group)
 		return
 	end
@@ -1266,7 +1326,7 @@ function ns.UpdateAuraMovers()
 			if not unlocked then
 				FinishMoving(group)
 			end
-			group.mover:SetShown(unlocked and group.settings.enabled)
+			group.mover:SetShown(unlocked and IsGroupEnabled(group.key))
 		end
 	end
 end
@@ -1436,6 +1496,8 @@ local function CreateContainers()
 	CreateContainer(groups.playerShortBuffs, "standard")
 	CreateContainer(groups.targetBuffs, "standard")
 	CreateContainer(groups.targetDebuffs, "standard")
+	CreateContainer(groups.focusBuffs, "standard")
+	CreateContainer(groups.focusDebuffs, "standard")
 	CreateContainer(groups.playerDebuffs, "standard")
 	CreateContainer(groups.playerDebuffs, "list")
 end
@@ -1536,6 +1598,8 @@ function ns.CreateAuraFrames()
 	CreatePlacedGroup("playerDebuffs", "Player debuffs")
 	-- The target's buffs stay put without a target, empty, so the frame can still be moved.
 	CreatePlacedGroup("targetBuffs", "Target buffs")
+	-- The focus's buffs work the same way.
+	CreatePlacedGroup("focusBuffs", "Focus buffs")
 
 	-- The short buffs ride on the player bar, so they scale with DibsUI, but they keep full opacity
 	-- while the bars fade, like the long buffs.
@@ -1546,6 +1610,15 @@ function ns.CreateAuraFrames()
 	-- at the orb the same way, and hide with it while there's no target.
 	local targetDebuffs = CreateGroup("targetDebuffs", "Target debuffs", DibsUITargetHealth.body:GetParent())
 	targetDebuffs.holder:SetIgnoreParentAlpha(true)
+
+	-- Focus debuffs ride on the focus frame, so they hide with it while there's no focus. The frame has
+	-- its own scale, which the holder undoes so the icons are sized in UI units like the rest.
+	local focusDebuffs = CreateGroup("focusDebuffs", "Focus debuffs", ns.focusVisual)
+	focusDebuffs.holder:SetIgnoreParentAlpha(true)
+	local function UndoFocusScale()
+		focusDebuffs.holder:SetScale(1 / ns.GetFocusScale())
+	end
+	UndoFocusScale()
 
 	-- Anchored groups follow their bar's width and the texts above it, and the player bar's anchor
 	-- follows the pet's name.
@@ -1558,6 +1631,11 @@ function ns.CreateAuraFrames()
 		end
 	end
 	hooksecurefunc(ns, "UpdateBarWidths", RefreshAnchoredGroups)
+	-- The focus frame's width and scale move both its groups: the debuffs on it and buffs attached to it.
+	function ns.OnFocusLayoutChanged()
+		UndoFocusScale()
+		ns.RefreshAuraFrames()
+	end
 	hooksecurefunc(ns, "SetTextStyle", RefreshAnchoredGroups)
 	hooksecurefunc(ns, "RefreshAllText", RefreshAnchoredGroups)
 
@@ -1568,6 +1646,7 @@ function ns.CreateAuraFrames()
 	events:RegisterEvent("PLAYER_REGEN_DISABLED")
 	events:RegisterEvent("PLAYER_REGEN_ENABLED")
 	events:RegisterEvent("PLAYER_TARGET_CHANGED")
+	events:RegisterEvent("PLAYER_FOCUS_CHANGED")
 	events:SetScript("OnEvent", function(_, event)
 		if event == "PLAYER_LOGIN" then
 			CreateContainers()
@@ -1581,10 +1660,11 @@ function ns.CreateAuraFrames()
 					UpdateGroup(group)
 				end
 			end
-		elseif event == "PLAYER_TARGET_CHANGED" then
-			-- Blizzard's containers follow aura changes, but a new target is DibsUI's to announce.
+		elseif event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_FOCUS_CHANGED" then
+			-- Blizzard's containers follow aura changes, but a new target or focus is DibsUI's to announce.
+			local unit = event == "PLAYER_TARGET_CHANGED" and "target" or "focus"
 			for _, group in pairs(groups) do
-				if group.spec.unit == "target" then
+				if group.spec.unit == unit then
 					for _, container in pairs(group.containers) do
 						container:UpdateAllAuras()
 					end

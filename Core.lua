@@ -93,6 +93,35 @@ ns.Layout = {
 	},
 }
 
+-- The focus frame is drawn like a DibsUI-Party member, in the same units as the orb above, and the whole
+-- frame is scaled down by baseScale (times the Focus scale setting). Distances are from its orb's centre.
+-- The health bar is the target health bar stretched to 1.5 times its height, art, outline and fill
+-- together, so its slanted caps still match the art; the power bar is the target's, 3 units under it.
+ns.FocusLayout = {
+	baseScale = 0.63,
+	-- The Width setting's 1 is this many times the target bar's length, so names fit at the frame's size.
+	widthBase = 1.3,
+	margin = 100, -- from the frame's left edge to the orb centre: room for a theme's larger rim
+	rightMargin = 8, -- past the health bar's tip
+	height = 200,
+
+	orbQuad = 160,
+	orbRadius = 53.5, -- the well inside the ring, where the portrait goes
+
+	barArt = { width = 320, sliceInner = 75, sliceTip = 165 }, -- BAR_ART
+	health = {
+		yCenter = 12, height = 51, quadHeight = 60, tip = 245, hitInner = 52,
+		fillInner = 68, fillOuter = 224.59, fillHeight = 39, capWidth = 13.76, wedgeWidth = 14, wedgeArt = "BarFillInner",
+		back = "BarHealthBack", frame = "BarHealthFrame",
+	},
+	power = {
+		yCenter = -25.5, height = 18, quadHeight = 40, tip = 188, hitInner = 66,
+		fillInner = 70, fillOuter = 176.66, fillHeight = 12, capWidth = 6.35,
+		back = "BarPowerBack", frame = "BarPowerFrame",
+	},
+	nameReserved = 24, -- the name's box is the bar's width less this, so it stays off the slanted tip
+}
+
 -- Every text field's default size and offset. The comment says what each offset is measured from.
 ns.Text = {
 	font = "Fonts\\FRIZQT__.TTF",
@@ -129,6 +158,15 @@ ns.Text = {
 	castTime = { size = 12, x = 0, y = -105, yAbove = 86 }, -- CENTER of the text, from the orb CENTER
 
 	moverLabel = { size = 14, x = 0, y = -6 }, -- TOP of the text to the TOP of the drag handle
+
+	-- The focus frame's, in its own units (ns.FocusLayout), so they're scaled with it: 24 is about 15 px.
+	focusName = { size = 24, x = 0, y = 4 }, -- BOTTOM of the text to the TOP of the health bar
+	focusLevel = { size = 20, x = 54, y = 54 }, -- CENTER of the text, from the orb CENTER: the top right of the rim
+	focusRight = { size = 20, x = -22, y = 0 }, -- RIGHT of the health bar
+	focusPowerRight = { size = 16, x = -13, y = 0 }, -- RIGHT of the power bar
+	focusCastName = { size = 20, x = 0, y = -82 }, -- TOP of the text, from the orb CENTER
+	focusCastTime = { size = 17, x = 0, y = -2 }, -- TOP of the text to the BOTTOM of the spell name
+	focusMoverLabel = { size = 22, x = 0, y = 4 }, -- BOTTOM of the text to the TOP of the drag handle
 }
 
 -- 999, 1.2k, 12k, 1.2m, 12m: Blizzard's documented rule for abbreviation breakpoints. The numbers
@@ -240,6 +278,10 @@ local function HideBlizzardFrames()
 	PetFrame:SetParent(hiddenParent)
 
 	TargetFrame:SetParent(hiddenParent)
+
+	-- DibsUI has its own focus frame, unless it's switched off. FocusFrame's cast bar is its child, so it
+	-- goes too.
+	ns.TakeOverFocusFrame()
 end
 
 -- The orb shows casts, so Blizzard's cast bar stays off. Blizzard turns it back on whenever one of its
@@ -267,6 +309,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 			ns.CreateIndicators()
 			ns.CreateOrb()
 			ns.CreateMover()
+			ns.CreateFocus()
 			ns.CreateAuraFrames()
 			ns.CreateCombatText()
 			ns.CreateOpacity()
