@@ -53,16 +53,24 @@ local function CreateRestIndicator(button)
 	flipBook:SetFlipBookFrameWidth(0)
 	flipBook:SetFlipBookFrameHeight(0)
 
-	-- The loop only runs while it's on screen.
+	-- The loop only runs while it's on screen. OnShow covers the player bar being hidden and shown again.
 	frame:SetScript("OnShow", function() loop:Play() end)
 	frame:SetScript("OnHide", function() loop:Stop() end)
 
+	-- A new frame is already shown, so resting at login changes nothing and OnShow never fires: start the
+	-- loop here too, or the texture shows the whole sheet as a grid of Zzz.
+	local function Update()
+		local resting = IsTrue(IsResting())
+		frame:SetShown(resting)
+		if resting and not loop:IsPlaying() then
+			loop:Play()
+		end
+	end
+
 	frame:RegisterEvent("PLAYER_UPDATE_RESTING")
 	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	frame:SetScript("OnEvent", function(self)
-		self:SetShown(IsTrue(IsResting()))
-	end)
-	frame:SetShown(IsTrue(IsResting()))
+	frame:SetScript("OnEvent", Update)
+	Update()
 end
 
 -- Which icon the player's PvP state calls for, following Blizzard's player frame: free for all first,

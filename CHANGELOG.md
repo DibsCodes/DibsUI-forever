@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.9
+
+- Fixed the resting Zzz showing as a grid of yellow dots when you logged in or reloaded while resting. It animates again
+
 ## 0.3.8
 
 - DibsUI now shows the DibsUI logo next to its name in the AddOns list, the same as DibsUI-Options and DibsUI-Party
