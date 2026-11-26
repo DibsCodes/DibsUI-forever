@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.10
+
+- The swing timer on the cast ring now also runs for ranged attacks: bows, guns, crossbows, thrown weapons and wands. It shares the Show swing timer switch with your melee swing
+
 ## 0.3.9
 
 - Fixed the resting Zzz showing as a grid of yellow dots when you logged in or reloaded while resting. It animates again

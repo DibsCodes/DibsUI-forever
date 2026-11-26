@@ -638,7 +638,7 @@ local function CreateCastRing(orb)
 		return info.isOnGCD
 	end
 
-	-- With no cast running, the ring shows the global cooldown in green, the main hand swing in grey,
+	-- With no cast running, the ring shows the global cooldown in green, the main hand or ranged swing in grey,
 	-- or nothing.
 	function ShowIdle()
 		activeCastID = nil
@@ -756,7 +756,10 @@ local function CreateCastRing(orb)
 			end
 			return
 		elseif event == "PLAYER_SWING" then
-			if arg2 == Enum.PlayerSwingType.MainHand then
+			-- Main hand and ranged (bows, guns, crossbows, thrown and wands) share the ring: you can't
+			-- melee and shoot at once, so the latest swing wins. The off hand is left out, since it
+			-- runs alongside the main hand.
+			if arg2 == Enum.PlayerSwingType.MainHand or arg2 == Enum.PlayerSwingType.Ranged then
 				swingStart, swingDuration = GetTime(), arg1
 				if not isCasting then
 					ShowIdle()

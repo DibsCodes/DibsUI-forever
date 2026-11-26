@@ -69,7 +69,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Shows a round spell icon, the spell name and `current / total` time below the orb, or above it if you prefer
 - The spell name and time have their own font, outline, size and color settings, and the icon can be turned off
 - After an instant ability, runs in green for the global cooldown, with the ability's icon and name. It can be turned off
-- Runs in grey for your main hand swing timer when you aren't casting. It can be turned off
+- Runs in grey for your swing timer when you aren't casting: your main hand in melee, or your bow, gun, crossbow, thrown weapon or wand when shooting. It can be turned off
 
 **Player buffs**
 - Replace Blizzard's buff frame with two frames: long buffs and short buffs
@@ -237,7 +237,7 @@ Under them, **Orb texts** edits the power and druid mana texts.
 | Setting | What it does |
 |---|---|
 | Spell name and time | Below the orb or above it. Either way the spell name sits over the time. |
-| Show swing timer | Turns the grey main hand swing on the ring on or off. |
+| Show swing timer | Turns the grey swing timer on the ring on or off: melee (main hand) and ranged, wands included. |
 | Animated ring | Light flows round the ring during casts, the global cooldown and the swing timer. Off, the ring is plain. |
 | Show global cooldown | After an instant ability, the ring shows the global cooldown in green, with the ability's icon and name. |
 | Show spell icon beside the name | Shows the spell's round icon beside its name. |
