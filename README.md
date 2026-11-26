@@ -55,6 +55,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 
 **Mana spark**
 - After a successful spell that costs mana, a gold spark circles the orb's inner edge once over five seconds, showing the five second rule
+- While you cast a spell that costs mana, the part of the liquid it will spend is washed pale, with a line where your mana will be once the cast goes off
 - Casting again restarts it, and potions, food, wands and free spells don't start it
 
 **Low health glow**
@@ -69,6 +70,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Shows a round spell icon, the spell name and `current / total` time below the orb, or above it if you prefer
 - The spell name and time have their own font, outline, size and color settings, and the icon can be turned off
 - After an instant ability, runs in green for the global cooldown, with the ability's icon and name. It can be turned off
+- Shades the end of a cast in red for your latency: once the fill reaches the red, the server has finished the cast and you can press your next spell. It can be turned off
 - Runs in grey for your swing timer when you aren't casting: your main hand in melee, or your bow, gun, crossbow, thrown weapon or wand when shooting. It can be turned off
 
 **Player buffs**
@@ -82,7 +84,7 @@ A World of Warcraft Forever addon that replaces the player, pet, target and targ
 - Weapon enchants, such as poisons and oils, show at the start of the long buffs
 - Short buffs sit above the player bar, as wide as it and clear of your name, filling right towards the orb, then up
 - Hover a buff for its tooltip, and right-click it out of combat to cancel it
-- Icons can be skinned with Masque
+- Icons can be skinned with Masque. Under a skin, Masque draws the icon borders, and debuff borders take the skin's shape in the debuff type's colour
 
 **Player debuffs**
 - Replace Blizzard's debuff frame, and keep updating in combat through Blizzard's aura container
@@ -228,6 +230,7 @@ Under them, **Target texts** (the target bar and its power bar) and **Target of 
 |---|---|
 | Liquid | **Animated**, the swirling liquid in the power's own style, **Plain**, a still liquid with no swirls, or **Flat**, a flat fill in the power's color. |
 | Show five second rule timer | Turns the mana spark on or off. |
+| Show mana cost of casts | Shows on the orb how much mana the spell you're casting will spend. |
 | Show druid mana in bear and cat form | Turns the druid mana under the orb on or off. It's the same as that text's Show switch. |
 
 Under them, **Orb texts** edits the power and druid mana texts.
@@ -239,6 +242,7 @@ Under them, **Orb texts** edits the power and druid mana texts.
 | Spell name and time | Below the orb or above it. Either way the spell name sits over the time. |
 | Show swing timer | Turns the grey swing timer on the ring on or off: melee (main hand) and ranged, wands included. |
 | Animated ring | Light flows round the ring during casts, the global cooldown and the swing timer. Off, the ring is plain. |
+| Show latency | Shades the end of a cast in red, as long as your latency, so you know when you can press your next spell. |
 | Show global cooldown | After an instant ability, the ring shows the global cooldown in green, with the ability's icon and name. |
 | Show spell icon beside the name | Shows the spell's round icon beside its name. |
 | Show latency | Not built yet, so it's greyed out. |

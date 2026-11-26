@@ -206,7 +206,11 @@ ns.Colors = {
 	channel = { 0.35, 0.85, 0.75 },
 	swing = { 0.60, 0.60, 0.60 },
 	gcd = { 0.30, 0.90, 0.35 }, -- the global cooldown after an instant ability
+	latency = { 0.90, 0.18, 0.15, 0.40 }, -- the end of a cast lost to latency, under the cast's fill
 	manaRule = { 1.00, 0.72, 0.20 }, -- the spark during the five second rule
+	-- Mana a cast will spend: a pale wash over that part of the liquid, and a line where the mana will land.
+	manaPrediction = { 0.75, 0.88, 1.00, 0.45 },
+	manaPredictionLine = { 0.80, 0.92, 1.00 },
 	druidMana = { 0.40, 0.70, 1.00 }, -- a druid's mana under the orb's power, lighter than the liquid so it reads over it
 	-- One per combo point, in the order they're earned.
 	combo = {

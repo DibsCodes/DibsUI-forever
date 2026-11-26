@@ -14,7 +14,7 @@ local TOGGLE_ON = W.TOGGLE_ON
 local FormatScale, FormatSize, FormatPercent = W.FormatScale, W.FormatSize, W.FormatPercent
 local CreateLabel, CreateHint = W.CreateLabel, W.CreateHint
 local ShowTooltip, HideTooltip = W.ShowTooltip, W.HideTooltip
-local CreateToggle, CreateToggleRow, CreatePlaceholderRow = W.CreateToggle, W.CreateToggleRow, W.CreatePlaceholderRow
+local CreateToggle, CreateToggleRow = W.CreateToggle, W.CreateToggleRow
 local CreateDropdownRow, CreateButton, CreateSwatch, PickColor = W.CreateDropdownRow, W.CreateButton, W.CreateSwatch, W.PickColor
 local SetUpChoiceMenu = W.SetUpChoiceMenu
 local CreateCard, PlaceCard, LayoutCards = W.CreateCard, W.PlaceCard, W.LayoutCards
@@ -573,6 +573,7 @@ local function BuildPowerOrb(content, _, relayout)
 	local styleRow = orbCard:Add(CreateDropdownRow(orbCard, "Liquid"))
 	local styleHint = orbCard:Add(CreateHint(orbCard, ""))
 	local spark = orbCard:Add(CreateToggleRow(orbCard, "Show five second rule timer", ns.SetManaSparkShown), 4)
+	local prediction = orbCard:Add(CreateToggleRow(orbCard, "Show mana cost of casts", ns.SetManaPredictionShown))
 	-- The druid mana is a text spot, so this is the same switch as that text's Show.
 	local druidMana = orbCard:Add(CreateToggleRow(orbCard, "Show druid mana in bear and cat form", function(checked)
 		ns.SetTextStyle("orbMana", "enabled", checked)
@@ -602,6 +603,7 @@ local function BuildPowerOrb(content, _, relayout)
 		Sync = Joined(function()
 			SyncStyle()
 			spark.toggle:SetChecked(ns.db.showManaSpark)
+			prediction.toggle:SetChecked(ns.db.showManaPrediction)
 			druidMana.toggle:SetChecked(ns.GetTextOption("orbMana", "enabled"))
 		end, orbRefresh),
 		SetCombatLocked = function() end,
@@ -617,8 +619,7 @@ local function BuildCastRing(content, _, relayout)
 		function() return ns.db.castTextPlacement end,
 		function(placement) ns.SetCastTextPlacement(placement) end)
 	local swing = castCard:Add(CreateToggleRow(castCard, "Show swing timer", ns.SetSwingTimerShown), 4)
-	-- PLACEHOLDER castLatency: "Show latency" - the part of the cast lost to latency, shaded at the ring's end.
-	castCard:Add(CreatePlaceholderRow(castCard, "Show latency", "castLatency"))
+	local latency = castCard:Add(CreateToggleRow(castCard, "Show latency", ns.SetCastLatencyShown))
 	local animatedRing = castCard:Add(CreateToggleRow(castCard, "Animated ring", ns.SetCastAnimated))
 	local gcd = castCard:Add(CreateToggleRow(castCard, "Show global cooldown", ns.SetGCDShown))
 	local icon = castCard:Add(CreateToggleRow(castCard, "Show spell icon beside the name", ns.SetCastIconShown))
@@ -634,6 +635,7 @@ local function BuildCastRing(content, _, relayout)
 			swing.toggle:SetChecked(ns.db.showSwingTimer)
 			animatedRing.toggle:SetChecked(ns.db.castAnimated)
 			gcd.toggle:SetChecked(ns.db.castGCD)
+			latency.toggle:SetChecked(ns.db.castLatency)
 			icon.toggle:SetChecked(ns.db.showCastIcon)
 		end, castRefresh),
 		SetCombatLocked = function() end,

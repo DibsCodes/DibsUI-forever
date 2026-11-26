@@ -749,10 +749,19 @@ local function CreateParts(button, withDispel, withStealable)
 	return parts
 end
 
--- DibsUI's own look: a thin black border, with the icon's baked-in border cropped off. Under a
--- Masque skin, Masque draws the icon, border and stack count instead.
+-- DibsUI's own look: a thin black border, with the icon's baked-in border cropped off, and the debuff
+-- type as a colored square round the icon. Under a Masque skin, Masque draws the icon, border and stack
+-- count instead, and shapes the debuff type border to the skin.
 local function ApplyOwnSkin(parts)
 	parts.border:Show()
+	if parts.dispel then
+		-- Masque swaps in its skin's border texture; put the plain square back.
+		parts.dispel:SetColorTexture(1, 1, 1, 1)
+		parts.dispel:SetTexCoord(0, 1, 0, 1)
+		parts.dispel:SetDrawLayer("BACKGROUND", -7)
+		parts.dispel:ClearAllPoints()
+		parts.dispel:SetAllPoints(parts.button)
+	end
 	-- Masque moves the icon down a layer when its skin is turned off, which would put it under the border.
 	parts.icon:SetDrawLayer("ARTWORK", 0)
 	parts.icon:ClearAllPoints()
@@ -820,12 +829,8 @@ local function StyleParts(group, mode, parts)
 	else
 		ApplyOwnSkin(parts)
 	end
-	-- Blizzard shows and colors the debuff type border itself. Under a skin it's tucked behind the icon,
-	-- since its visibility belongs to Blizzard.
-	if parts.dispel then
-		parts.dispel:ClearAllPoints()
-		parts.dispel:SetAllPoints(skinned and parts.icon or button)
-	end
+	-- Blizzard shows and colors the debuff type border itself (keeping whatever texture it has), so under a
+	-- skin Masque's border takes the debuff's color.
 	if parts.stealable then
 		parts.stealable:SetSize(size * STEALABLE_SCALE, size * STEALABLE_SCALE)
 	end
@@ -857,10 +862,13 @@ local function StyleParts(group, mode, parts)
 	end
 end
 
--- The time text stays out of Masque, which would size it to the skin and could cut it off.
+-- The time text stays out of Masque, which would size it to the skin and could cut it off. A debuff's
+-- type border is Masque's "Border" region, which Masque shapes to the skin but doesn't color, so
+-- Blizzard's debuff type color (or a test icon's) tints it.
 local function AddToMasque(group, parts)
 	if group.masque then
-		group.masque:AddButton(parts.button, { Icon = parts.icon, Count = parts.count, Duration = false }, "Buff")
+		group.masque:AddButton(parts.button, { Icon = parts.icon, Count = parts.count, Duration = false,
+			Border = parts.dispel or false }, parts.dispel and "Debuff" or "Buff")
 		TellMasqueSize(group, parts, true)
 	end
 end

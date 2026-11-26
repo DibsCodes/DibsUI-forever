@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.11
+
+- New: while you cast a spell that costs mana, the orb shows how much it will spend: that part of the liquid is washed pale, with a line where your mana will be once the cast goes off. Turn it off with Show mana cost of casts on the Power Orb page
+- New: the cast ring shades the end of each cast in red for your latency. Once the fill reaches the red, the server has finished the cast and you can press your next spell. Turn it off with Show latency on the Cast Ring page
+- With Masque, debuff borders now take the skin's shape, colored by the debuff type (Magic, Curse, Poison, Disease), the same as DibsUI-Party. Turning a group's skin off in Masque brings back DibsUI's own square borders
+
 ## 0.3.10
 
 - The swing timer on the cast ring now also runs for ranged attacks: bows, guns, crossbows, thrown weapons and wands. It shares the Show swing timer switch with your melee swing

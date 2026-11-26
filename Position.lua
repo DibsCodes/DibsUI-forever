@@ -39,9 +39,11 @@ local PROFILE_DEFAULTS = {
 	orbStyle = "animated", -- "plain" or "flat"
 	theme = "default", -- border art, a key of ns.Themes
 	showManaSpark = true, -- the five second rule
+	showManaPrediction = true, -- the mana a cast will spend, on the orb
 	showSwingTimer = true,
 	castAnimated = true, -- light flowing round the cast ring
 	castGCD = true, -- the global cooldown on the ring after an instant ability
+	castLatency = true, -- the end of a cast lost to latency, shaded on the ring
 	showCastIcon = true,
 	lowHealthGlow = true, -- a faint red glow round the orb and the player's bars
 	lowHealthThreshold = 20, -- percent of health below which it shows
@@ -174,7 +176,7 @@ function ns.CleanProfile(profile)
 	if type(profile.masterFont) ~= "string" then
 		profile.masterFont = nil
 	end
-	for _, key in ipairs({ "showPet", "showManaSpark", "showSwingTimer", "showCastIcon", "castAnimated", "castGCD", "lowHealthGlow", "focusEnabled", "focusRangeFade" }) do
+	for _, key in ipairs({ "showPet", "showManaSpark", "showManaPrediction", "showSwingTimer", "showCastIcon", "castAnimated", "castGCD", "castLatency", "lowHealthGlow", "focusEnabled", "focusRangeFade" }) do
 		if type(profile[key]) ~= "boolean" then
 			profile[key] = PROFILE_DEFAULTS[key]
 		end
@@ -610,6 +612,11 @@ function ns.SetManaSparkShown(shown)
 	ns.UpdateManaSpark()
 end
 
+function ns.SetManaPredictionShown(shown)
+	ns.db.showManaPrediction = shown
+	ns.UpdateManaPrediction()
+end
+
 function ns.SetCastAnimated(animated)
 	ns.db.castAnimated = animated
 	ns.UpdateCastRingStyle()
@@ -631,6 +638,11 @@ function ns.SetLowHealthThreshold(percent)
 	ns.UpdateLowHealthGlow()
 end
 
+function ns.SetCastLatencyShown(shown)
+	ns.db.castLatency = shown
+	ns.UpdateCastLatency()
+end
+
 function ns.SetGCDShown(shown)
 	ns.db.castGCD = shown
 	ns.UpdateSwingTimer()
@@ -645,5 +657,7 @@ end
 function ns.UpdateOrb()
 	ns.UpdateOrbLiquid()
 	ns.UpdateManaSpark()
+	ns.UpdateManaPrediction()
 	ns.UpdateSwingTimer()
+	ns.UpdateCastLatency()
 end

@@ -62,6 +62,95 @@ local function Lighten(r, g, b)
 	return r + (1 - r) * 0.5, g + (1 - g) * 0.5, b + (1 - b) * 0.5
 end
 
+-- The mana a cast will spend, shown on the liquid while the cast runs: a band from the liquid's top down
+-- to where the mana will be once the cast goes off, with a surface line at that level. Mana can be
+-- secret, so nothing here does sums with it. The band is its own status bar, as tall as the orb and
+-- hung from the liquid's top, filling downward by cost / max mana; the game works out its height. A
+-- cost bigger than the mana left runs past the bottom and is cut off by the round mask.
+local function CreateManaPrediction(orb, fill, liquid)
+	local bar = CreateFrame("StatusBar", "DibsUIManaPrediction", orb)
+	bar:SetFrameLevel(orb:GetFrameLevel() + 2)
+	bar:SetSize(Layout.orbRadius * 2, Layout.orbRadius * 2)
+	bar:SetPoint("TOP", liquid, "TOP")
+	bar:SetOrientation("VERTICAL")
+	bar:SetFillStyle(Enum.StatusBarFillStyle.StandardNoRangeFill)
+	-- After the fill style, which resets it.
+	bar:SetReverseFill(true)
+	bar:SetStatusBarTexture(ns.Media("Flat"))
+	local band = bar:GetStatusBarTexture()
+	band:SetBlendMode("BLEND")
+	local color = ns.Colors.manaPrediction
+	bar:SetStatusBarColor(color[1], color[2], color[3], color[4])
+	bar:Hide()
+
+	local circle = bar:CreateMaskTexture()
+	circle:SetAtlas("CircleMask")
+	circle:SetAllPoints(fill)
+	band:AddMaskTexture(circle)
+	-- The round mask's edge pixels repeat outside its square, so a cost bigger than the mana left would
+	-- show the line under the orb. This one is black outside the orb's square.
+	local square = bar:CreateMaskTexture()
+	square:SetTexture(ns.Media("Flat"), "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	square:SetAllPoints(fill)
+	band:AddMaskTexture(square)
+
+	local line = ns.CreateArt(bar, "OVERLAY", "OrbSurface")
+	line:SetBlendMode("ADD")
+	line:SetSize(Layout.orbRadius * 2, SURFACE_HEIGHT)
+	line:SetPoint("CENTER", band, "BOTTOM")
+	line:AddMaskTexture(circle)
+	line:AddMaskTexture(square)
+	local lineColor = ns.Colors.manaPredictionLine
+	line:SetVertexColor(lineColor[1], lineColor[2], lineColor[3])
+
+	-- The mana cost of the cast running now, or nil. The cost type has to be readable to tell it's mana;
+	-- the amount itself only goes into the bar, so it can be secret.
+	local function CastManaCost()
+		local _, _, _, startMS, _, _, _, _, spellID = UnitCastingInfo("player")
+		if not issecretvalue(startMS) and startMS == nil then
+			return nil
+		end
+		if not issecretvalue(spellID) and spellID == nil then
+			return nil
+		end
+		local costs = C_Spell.GetSpellPowerCost(spellID)
+		if issecretvalue(costs) or not costs then
+			return nil
+		end
+		for _, info in ipairs(costs) do
+			if not issecretvalue(info.type) and info.type == Enum.PowerType.Mana then
+				local cost = info.cost
+				if issecretvalue(cost) or cost > 0 then
+					return cost
+				end
+			end
+		end
+		return nil
+	end
+
+	local function Update()
+		local _, powerToken = UnitPowerType("player")
+		local cost = ns.db.showManaPrediction and powerToken == "MANA" and CastManaCost() or nil
+		if cost == nil then
+			bar:Hide()
+			return
+		end
+		bar:SetMinMaxValues(0, UnitPowerMax("player", Enum.PowerType.Mana))
+		bar:SetValue(cost)
+		bar:Show()
+	end
+	ns.UpdateManaPrediction = Update
+
+	-- Mana comes off when the cast completes, so the band shows from the cast's start until it ends.
+	-- Channels pay up front, so they have nothing to predict.
+	for _, event in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
+		"UNIT_SPELLCAST_INTERRUPTED", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }) do
+		bar:RegisterUnitEvent(event, "player")
+	end
+	bar:RegisterEvent("PLAYER_ENTERING_WORLD")
+	bar:SetScript("OnEvent", Update)
+end
+
 local function CreatePowerOrb(orb)
 	local fill = CreateFrame("StatusBar", nil, orb)
 	fill:SetSize(Layout.orbRadius * 2, Layout.orbRadius * 2)
@@ -103,6 +192,8 @@ local function CreatePowerOrb(orb)
 	surface:SetSize(Layout.orbRadius * 2, SURFACE_HEIGHT)
 	surface:SetPoint("CENTER", liquid, "TOP")
 	surface:AddMaskTexture(circle)
+
+	CreateManaPrediction(orb, fill, liquid)
 
 	fill:SetScript("OnUpdate", function(_, elapsed)
 		for _, flow in ipairs(flows) do
@@ -154,7 +245,7 @@ local function CreatePowerOrb(orb)
 		end
 	end
 
-	local glass = CreateLayer(orb, orb:GetFrameLevel() + 2)
+	local glass = CreateLayer(orb, orb:GetFrameLevel() + 3)
 	ns.CreateArt(glass, "ARTWORK", "OrbGlass"):SetAllPoints()
 
 	local value = ns.CreateValueText(glass, "orbCenter", glass, "CENTER", orb)
@@ -229,7 +320,7 @@ local function CreateComboRing(orb)
 	local ring = CreateFrame("Frame", "DibsUIComboRing", orb)
 	ring:SetSize(Layout.comboQuad, Layout.comboQuad)
 	ring:SetPoint("CENTER")
-	ring:SetFrameLevel(orb:GetFrameLevel() + 3)
+	ring:SetFrameLevel(orb:GetFrameLevel() + 4)
 	ns.CreateArt(ring, "ARTWORK", "ComboTrack"):SetAllPoints()
 
 	local segments = {}
@@ -292,7 +383,7 @@ local function CreateManaSpark(orb)
 	local frame = CreateFrame("Frame", "DibsUIManaSpark", orb)
 	frame:SetSize(Layout.manaSparkQuad, Layout.manaSparkQuad)
 	frame:SetPoint("CENTER")
-	frame:SetFrameLevel(orb:GetFrameLevel() + 3)
+	frame:SetFrameLevel(orb:GetFrameLevel() + 4)
 	frame:Hide()
 
 	local color = ns.Colors.manaRule
@@ -362,7 +453,7 @@ local CHANNEL_END_EVENTS = {
 local function CreateCastInfo(orb)
 	local info = CreateFrame("Frame", nil, orb)
 	info:SetAllPoints()
-	info:SetFrameLevel(orb:GetFrameLevel() + 5)
+	info:SetFrameLevel(orb:GetFrameLevel() + 7)
 	info:SetIgnoreParentAlpha(true)
 	info:Hide()
 
@@ -475,6 +566,12 @@ end
 -- easing out, while the cast carries on filling underneath.
 local PUSHBACK_SLIDE = 0.3
 
+-- A send more than this long before a cast starts belongs to something else (an instant, or a spell the
+-- server refused), so the cast uses the game's world latency instead.
+local LATENCY_WINDOW = 1.5
+-- How long the latency swipe's frozen cooldown lasts, so it doesn't visibly move during a cast.
+local LATENCY_HOLD = 1000000
+
 -- The global cooldown's own spell. A spell on the global cooldown reports it too (isOnGCD).
 --
 -- In combat a cooldown's start and length are secret, so addon code can't time it. The ring gets it
@@ -496,7 +593,7 @@ local function CreateCastRing(orb)
 	-- so a channel drains in the same direction.
 	local ring = CreateFrame("Cooldown", nil, orb)
 	ring:SetAllPoints()
-	ring:SetFrameLevel(orb:GetFrameLevel() + 3)
+	ring:SetFrameLevel(orb:GetFrameLevel() + 5)
 	ring:SetHideCountdownNumbers(true)
 	ring:SetDrawBling(false)
 	ring:SetDrawSwipe(true)
@@ -504,6 +601,28 @@ local function CreateCastRing(orb)
 	ring:SetEdgeTexture(ns.Media("CastEdge"), 1, 1, 1, 1)
 	ring:SetDrawEdge(true)
 	ring:SetUseCircularEdge(true)
+
+	-- Latency: the last part of a cast, as long as the delay between sending the spell and the server
+	-- saying it started. The server finishes the cast that much before the ring does, so the next spell
+	-- can be pressed once the fill reaches it. It's a second swipe under the cast's, held still: unreversed,
+	-- a swipe is the remaining part, which ends at 12 o'clock, and with a very long duration it doesn't
+	-- visibly move during a cast.
+	local latencyRing = CreateFrame("Cooldown", "DibsUICastLatency", orb)
+	latencyRing:SetAllPoints()
+	latencyRing:SetFrameLevel(orb:GetFrameLevel() + 4)
+	latencyRing:SetHideCountdownNumbers(true)
+	latencyRing:SetDrawBling(false)
+	latencyRing:SetDrawEdge(false)
+	latencyRing:SetDrawSwipe(true)
+	latencyRing:SetSwipeTexture(ns.Media("CastRing"), 1, 1, 1, 1)
+	local latencyColor = ns.Colors.latency
+	latencyRing:SetSwipeColor(latencyColor[1], latencyColor[2], latencyColor[3], latencyColor[4])
+	latencyRing:SetReverse(false)
+	-- Casts show at full opacity, so their latency does too.
+	latencyRing:SetIgnoreParentAlpha(true)
+	latencyRing:Hide()
+	-- When the spell was sent, and the latency measured for the cast showing, in seconds.
+	local sentTime, castLatency
 
 	local activeCastID
 	local isChanneling = false
@@ -530,6 +649,17 @@ local function CreateCastRing(orb)
 
 	local animator = CreateFrame("Frame", nil, orb)
 	animator:Hide()
+
+	-- Only for casts: channels drain from the start, and empowered spells end when the key comes up.
+	local isPlainCast = false
+	local function ShowLatency()
+		if not (ns.db.castLatency and isCasting and isPlainCast and castLatency and castDuration and castDuration > 0) then
+			latencyRing:Hide()
+			return
+		end
+		local fraction = math.min(castLatency / castDuration, 1)
+		latencyRing:SetCooldown(GetTime() - (1 - fraction) * LATENCY_HOLD, LATENCY_HOLD)
+	end
 
 	local function ShowStaticRing()
 		if flowFrame then
@@ -644,6 +774,7 @@ local function CreateCastRing(orb)
 		activeCastID = nil
 		isChanneling = false
 		isCasting = false
+		latencyRing:Hide()
 		slideFrom = nil
 		ring:SetIgnoreParentAlpha(false)
 		local now = GetTime()
@@ -694,6 +825,18 @@ local function CreateCastRing(orb)
 		local start, duration = startMS / 1000, (endMS - startMS) / 1000
 		local now = GetTime()
 
+		-- A new cast's latency: from the send to the start, or the game's world latency when the send
+		-- wasn't seen (or was too long ago to belong to this cast).
+		if event == "UNIT_SPELLCAST_START" then
+			if sentTime and now - sentTime < LATENCY_WINDOW then
+				castLatency = now - sentTime
+			else
+				local _, _, _, world = GetNetStats()
+				castLatency = world and world / 1000 or nil
+			end
+			sentTime = nil
+		end
+
 		-- The same cast with new timing: slide from where the ring is now rather than jumping.
 		local isSameCast = isCasting and isChanneling == not isCast and newCastID == activeCastID
 		if TIMING_CHANGE_EVENTS[event] and isSameCast and castDuration and castDuration > 0 and duration > 0 then
@@ -728,12 +871,15 @@ local function CreateCastRing(orb)
 		if not slideFrom then
 			ring:SetCooldown(start, duration)
 		end
+		isPlainCast = isCast and not isEmpowered
+		ShowLatency()
 		UpdateAnimator()
 		info:Start(spellName, texture, startMS, endMS, not isFilling)
 	end
 
 	-- Switching the animation on or off shows straight away, even mid-cast.
 	ns.UpdateCastRingStyle = UpdateAnimator
+	ns.UpdateCastLatency = ShowLatency
 
 	-- Switching the swing timer shows or clears it straight away, unless a cast is showing.
 	ns.UpdateSwingTimer = function()
@@ -748,8 +894,12 @@ local function CreateCastRing(orb)
 	ring:RegisterEvent("PLAYER_ENTERING_WORLD")
 	ring:RegisterEvent("PLAYER_SWING")
 	ring:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+	ring:RegisterUnitEvent("UNIT_SPELLCAST_SENT", "player")
 	ring:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
-		if event == "UNIT_SPELLCAST_SUCCEEDED" then
+		if event == "UNIT_SPELLCAST_SENT" then
+			sentTime = GetTime()
+			return
+		elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 			-- arg3 is the spell. A cast-time spell also succeeds, but its cast is still showing then.
 			if not isCasting and StartGCD(arg3) then
 				ShowIdle()
@@ -805,7 +955,7 @@ function ns.CreateOrb()
 	CreateCastRing(orb)
 
 	-- Rims and the 12 o'clock tick, above the cast swipe.
-	local rim = CreateLayer(orb, orb:GetFrameLevel() + 4)
+	local rim = CreateLayer(orb, orb:GetFrameLevel() + 6)
 	local rimArt = ns.CreateArt(rim, "ARTWORK", "OrbFrame")
 	rimArt:SetPoint("CENTER", orb)
 	-- Some themes' rims reach past the orb's quad, so their art is drawn bigger.
