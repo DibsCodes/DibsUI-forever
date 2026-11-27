@@ -57,6 +57,98 @@ local PROFILE_DEFAULTS = {
 
 local root, mover
 
+-- Arrangement ----------------------------------------------------------------------------------------
+
+-- A plugin can put the player and target bars on the same side of the orb: DibsUI-Stacked does. DibsUI
+-- lists it in its TOC's OptionalDeps, so it loads first and can set the hook before DibsUI builds its
+-- frames. The contract (version 1), kept stable for plugins:
+--
+--   DibsUI_Hooks = DibsUI_Hooks or {}
+--   DibsUI_Hooks.GetArrangement = function() return barSides, stackOrder end
+--     barSides: "split" (player left, target right, the usual), "left" or "right" (both on that side)
+--     stackOrder: "targetTop" or "playerTop", which frame takes the top half when they share a side
+--
+-- DibsUI asks once, while loading: the bars are built for their side, so a change takes a reload. It
+-- then sets DibsUI_Hooks.version (1) and DibsUI_Hooks.applied = { barSides = ..., stackOrder = ... }, so
+-- a plugin can tell which DibsUI understands the hook and whether its setting is on screen yet. Anything
+-- missing, broken or unknown falls back to the usual split.
+DibsUI_Hooks = DibsUI_Hooks or {}
+local HOOK_VERSION = 1
+local BAR_SIDES = { split = true, left = true, right = true }
+local STACK_ORDERS = { targetTop = true, playerTop = true }
+
+-- The side each frame's bars were drawn for: -1 left, 1 right. The pet goes with the player and the
+-- target of target with the target.
+local DEFAULT_SIDES = { player = -1, target = 1 }
+
+-- How the frames were arranged when they were built. Until it's read, the usual split.
+local arrangement = { player = DEFAULT_SIDES.player, target = DEFAULT_SIDES.target }
+
+local function ReadArrangementHook()
+	local barSides, stackOrder = "split", "targetTop"
+	local hook = DibsUI_Hooks.GetArrangement
+	if type(hook) == "function" then
+		local ok, sides, order = pcall(hook)
+		if ok and BAR_SIDES[sides] then
+			barSides = sides
+			stackOrder = STACK_ORDERS[order] and order or stackOrder
+		elseif not ok then
+			geterrorhandler()(sides)
+		end
+	end
+	return barSides, stackOrder
+end
+
+-- Stacked on one side, the upper frame stays where the bars usually are, on the top half of the orb,
+-- and the lower one is turned upside down onto the bottom half: its bars, art and curved inner ends
+-- mirrored round the orb's centre, with its name and buffs under it.
+local function BuildArrangement(barSides, stackOrder)
+	local built = { barSides = barSides, stackOrder = stackOrder }
+	if barSides == "split" then
+		built.player, built.target = DEFAULT_SIDES.player, DEFAULT_SIDES.target
+	else
+		local side = barSides == "left" and -1 or 1
+		built.player, built.target = side, side
+		built.stacked = true
+		built.targetOnTop = stackOrder == "targetTop"
+		built.lower = built.targetOnTop and "player" or "target"
+	end
+	return built
+end
+
+-- role is "player" (the player and pet bars) or "target" (the target, its power and target of target).
+function ns.GetSide(role)
+	return arrangement[role]
+end
+
+-- Whether a frame sits on the other side from the one its texts and icons were laid out for.
+function ns.IsMirrored(role)
+	return arrangement[role] ~= DEFAULT_SIDES[role]
+end
+
+function ns.IsStacked()
+	return arrangement.stacked == true
+end
+
+function ns.IsTargetOnTop()
+	return arrangement.stacked == true and arrangement.targetOnTop
+end
+
+-- Whether a frame is the lower of a stack, turned upside down under the orb.
+function ns.IsFlipped(role)
+	return arrangement.lower == role
+end
+
+-- Whether a frame's buffs or debuffs sit "above" its bar or "below" it. Stacked, the lower frame's go
+-- below, so they don't run into the frame over it.
+function ns.GetAuraPlacement(role)
+	if not arrangement.stacked then
+		return "above"
+	end
+	local upper = arrangement.targetOnTop and "target" or "player"
+	return role == upper and "above" or "below"
+end
+
 local function Clamp(value, range)
 	return math.min(math.max(value, range.min), range.max)
 end
@@ -263,43 +355,62 @@ function ns.LoadSettings()
 	ImportOldSettings(options)
 	ns.ListenForThemeRequests()
 	ns.db = options:GetProfile("DibsUI")
+	arrangement = BuildArrangement(ReadArrangementHook())
+	DibsUI_Hooks.version = HOOK_VERSION
+	DibsUI_Hooks.applied = { barSides = arrangement.barSides, stackOrder = arrangement.stackOrder }
 	ns.account = options:GetAccount("DibsUI")
 	-- The buffs DibsUI has learned the durations of, shared by every character.
 	ns.account.learnedBuffs = ns.CleanLearnedBuffs(ns.account.learnedBuffs)
 end
 
--- side is -1 for the left wing (player) and 1 for the right (target).
-local function WidthSetting(spec, side)
-	return spec.widthSettings[side < 0 and 1 or 2]
+-- role is "player" for the player and pet bars and "target" for the target's and the target of target.
+local function WidthSetting(spec, role)
+	return spec.widthSettings[role == "player" and 1 or 2]
 end
 
 -- How much longer the width setting makes a bar, in UI units. A negative value means shorter.
-function ns.GetBarGrowth(spec, side)
-	return (ns.db[WidthSetting(spec, side)] - 1) * (spec.fillOuter - spec.fillInner)
+function ns.GetBarGrowth(spec, role)
+	return (ns.db[WidthSetting(spec, role)] - 1) * (spec.fillOuter - spec.fillInner)
 end
 
 -- How far a bar moves away from the orb to stay attached to the bar it follows, on the same side.
-function ns.GetBarShift(spec, side)
-	return spec.followsHealth and ns.GetBarGrowth(Layout.health, side) or 0
+function ns.GetBarShift(spec, role)
+	return spec.followsHealth and ns.GetBarGrowth(Layout.health, role) or 0
 end
 
 -- How far from the orb's centre a bar's outer tip reaches, with its width and shift.
-function ns.GetBarReach(spec, side)
-	return spec.tip + ns.GetBarGrowth(spec, side) + ns.GetBarShift(spec, side)
+function ns.GetBarReach(spec, role)
+	return spec.tip + ns.GetBarGrowth(spec, role) + ns.GetBarShift(spec, role)
 end
 
--- How far the frames reach on one side: the pet bar on the left, and on the right the target of target
--- bar while it's shown, or else the target bar.
-function ns.GetWingReach(side)
-	if side < 0 or ns.db.showTargetOfTarget then
-		return ns.GetBarReach(Layout.pet, side)
+-- How far one frame reaches: the player's pet bar, and the target of target bar while it's shown, or
+-- else the target bar.
+local function GetFrameReach(role)
+	if role == "player" or ns.db.showTargetOfTarget then
+		return ns.GetBarReach(Layout.pet, role)
 	end
-	return ns.GetBarReach(Layout.health, side)
+	return ns.GetBarReach(Layout.health, role)
+end
+
+-- How far the frames reach on one side, -1 left or 1 right. A side with neither still holds the orb.
+function ns.GetWingReach(side)
+	local reach = Layout.orbQuad / 2
+	for _, role in ipairs({ "player", "target" }) do
+		if ns.GetSide(role) == side then
+			reach = math.max(reach, GetFrameReach(role))
+		end
+	end
+	return reach
 end
 
 -- The root stays centred on the orb, so it's as wide as the longer health bar on both sides.
 function ns.GetRootWidth()
-	return 2 * (math.max(ns.GetBarReach(Layout.health, -1), ns.GetBarReach(Layout.health, 1)) + Layout.rootMargin)
+	return 2 * (math.max(ns.GetBarReach(Layout.health, "player"), ns.GetBarReach(Layout.health, "target")) + Layout.rootMargin)
+end
+
+-- The frames stay within the usual height whichever way they're arranged.
+function ns.GetRootHeight()
+	return Layout.rootHeight
 end
 
 local function ApplyPlacement()
@@ -315,7 +426,7 @@ end
 function ns.CreateRoot()
 	root = CreateFrame("Frame", nil, UIParent)
 	root:SetFrameStrata("LOW")
-	root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
+	root:SetSize(ns.GetRootWidth(), ns.GetRootHeight())
 	root:SetMovable(true)
 	root:SetClampedToScreen(true)
 	root:SetDontSavePosition(true)
@@ -424,7 +535,7 @@ local PAIR_OF = { player = "main", target = "main", pet = "outer", tot = "outer"
 
 -- Every bar, the root and the drag handle follow the widths. They move secure frames, so not in combat.
 local function ApplyWidths()
-	root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
+	root:SetSize(ns.GetRootWidth(), ns.GetRootHeight())
 	ns.UpdateBarWidths()
 	LayoutMover()
 end
@@ -506,7 +617,7 @@ end
 -- resizes the secure buttons, so it can't happen in combat.
 function ns.ApplyProfile()
 	FinishMoving()
-	root:SetSize(ns.GetRootWidth(), Layout.rootHeight)
+	root:SetSize(ns.GetRootWidth(), ns.GetRootHeight())
 	ApplyPlacement()
 	ns.UpdateTargetOfTargetShown()
 	ns.UpdatePetShown()

@@ -36,7 +36,11 @@ end
 local function CreateRestIndicator(button)
 	local frame = CreateFrame("Frame", "DibsUIRestIndicator", button.overlay)
 	frame:SetSize(REST.size, REST.size)
-	frame:SetPoint("BOTTOMLEFT", button.body, "TOPLEFT", REST.x, REST.y)
+	-- Over the outer tip, which is on the right when the player bar is, and under it when the bar is
+	-- turned upside down under the orb.
+	local mirrored, flipped = button.mirrored, button.flipped
+	frame:SetPoint(ns.FlipPoint("BOTTOMLEFT", mirrored, flipped), button.body, ns.FlipPoint("TOPLEFT", mirrored, flipped),
+		mirrored and -REST.x or REST.x, flipped and -REST.y or REST.y)
 
 	local zzz = frame:CreateTexture(nil, "ARTWORK")
 	zzz:SetAtlas(REST.atlas)
@@ -102,16 +106,23 @@ end
 local function CreatePvPIndicator(button)
 	local frame = CreateFrame("Frame", "DibsUIPvPIndicator", button.overlay)
 	frame:SetSize(PVP.height, PVP.height)
-	frame:SetPoint("TOPLEFT", button.body, "BOTTOMLEFT", PVP.x, PVP.y)
+	-- Under the outer corner, on whichever side the bar is, and over it when the bar is upside down.
+	local mirrored, flipped = button.mirrored, button.flipped
+	local corner = ns.FlipPoint("TOPLEFT", mirrored, flipped)
+	frame:SetPoint(corner, button.body, ns.FlipPoint("BOTTOMLEFT", mirrored, flipped), mirrored and -PVP.x or PVP.x, flipped and -PVP.y or PVP.y)
 
 	local icon = frame:CreateTexture(nil, "ARTWORK")
-	icon:SetPoint("TOPLEFT")
+	icon:SetPoint(corner)
 
 	-- The time sits on its own frame, since the text settings show and hide the font string itself.
 	local timer = CreateFrame("Frame", nil, frame)
 	timer:SetAllPoints()
 	local text = ns.CreateText(timer, "pvpTimer", button)
-	ns.PlaceText(text, "LEFT", icon, "RIGHT", ns.Text.pvpTimer.x, ns.Text.pvpTimer.y)
+	-- The time goes towards the orb, or away from it over an upside down bar, where the target's power
+	-- bar ends just above.
+	local timerOut = mirrored ~= flipped
+	local timerX = timerOut and -ns.Text.pvpTimer.x or ns.Text.pvpTimer.x
+	ns.PlaceText(text, ns.MirrorPoint("LEFT", timerOut), icon, ns.MirrorPoint("RIGHT", timerOut), timerX, ns.Text.pvpTimer.y)
 	ns.SetTextColor(text, 1, 0.82, 0)
 
 	local shownAtlas

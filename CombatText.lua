@@ -138,6 +138,17 @@ local function GetPlayerFloor()
 	end
 	local barScale = bar:GetEffectiveScale()
 	local x = bar:GetCenter() * barScale
+	-- With the target stacked over the player bar, the text rises from over the target and its debuffs.
+	-- The target's bar is measured from the orb, since it's hidden without a target.
+	if ns.IsTargetOnTop() then
+		local debuffsTop, debuffsScale = ns.GetTargetDebuffsTop()
+		if debuffsTop then
+			return x, (debuffsTop + ABOVE_SHORT_BUFFS) * debuffsScale
+		end
+		local root, health = ns.root, ns.Layout.health
+		local _, rootY = root:GetCenter()
+		return x, (rootY + health.yCenter + health.height / 2 + ABOVE_BAR) * root:GetEffectiveScale()
+	end
 	local buffsTop, buffsScale = ns.GetShortBuffsTop()
 	if buffsTop then
 		return x, (buffsTop + ABOVE_SHORT_BUFFS) * buffsScale

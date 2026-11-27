@@ -45,26 +45,39 @@ local function SetBarColor(bar, r, g, b)
 	end
 end
 
+-- Shows art from left to right across the texture, turned upside down for a flipped frame.
+local function SetArtCoords(texture, left, right, flipped)
+	texture:SetTexCoord(left, right, flipped and 1 or 0, flipped and 0 or 1)
+end
+
+-- The fill's own pieces (cap, inner end) carry the fill's shading, a gloss over the top half. The fill
+-- itself isn't turned over on a flipped bar, so these can't be either: a flipped bar uses art with the
+-- shape turned upside down and the gloss still on top (generate_art.py's flip_shape).
+local function FillPieceArt(fileName, flipped)
+	return flipped and fileName .. "Flipped" or fileName
+end
+
 -- A triangle riding on the fill's moving edge gives it the same slant as the bar's outline.
 -- The pieces meet edge to edge: an overlap would show as a line at the resting opacity.
-local function CreateFillCap(bar, spec, side)
+local function CreateFillCap(bar, spec, side, flipped)
 	local fill = bar:GetStatusBarTexture()
-	local cap = ns.CreateArt(bar, "ARTWORK", "BarFillCap")
+	local cap = ns.CreateArt(bar, "ARTWORK", FillPieceArt("BarFillCap", flipped))
 	cap:SetWidth(spec.capWidth)
 	if side < 0 then
 		cap:SetPoint("TOPRIGHT", fill, "TOPLEFT")
 		cap:SetPoint("BOTTOMRIGHT", fill, "BOTTOMLEFT")
-		cap:SetTexCoord(1, 0, 0, 1)
+		SetArtCoords(cap, 1, 0, false)
 	else
 		cap:SetPoint("TOPLEFT", fill, "TOPRIGHT")
 		cap:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT")
+		SetArtCoords(cap, 0, 1, false)
 	end
 	bar.cap = cap
 end
 
 local bars = {}
 
-local function CreateArtSlices(parent, layer, fileName, side, art)
+local function CreateArtSlices(parent, layer, fileName, side, art, flipped)
 	local quad = art.width
 	-- The middle reads a narrow band and only ever stretches. Squeezing a wider strip into a short
 	-- bar would blur the border into dark notches.
@@ -78,9 +91,9 @@ local function CreateArtSlices(parent, layer, fileName, side, art)
 		local slice = ns.CreateArt(parent, layer, fileName)
 		local left, right = range[1] / quad, range[2] / quad
 		if side < 0 then
-			slice:SetTexCoord(right, left, 0, 1)
+			SetArtCoords(slice, right, left, flipped)
 		else
-			slice:SetTexCoord(left, right, 0, 1)
+			SetArtCoords(slice, left, right, flipped)
 		end
 		slices[i] = slice
 	end
@@ -99,21 +112,23 @@ end
 
 -- Applies the width setting: the click area, the visible body, the art and the fill.
 local function LayoutBar(button)
-	local spec, side = button.spec, button.side
-	local growth = ns.GetBarGrowth(spec, side)
+	local spec, side, role = button.spec, button.side, button.role
+	local growth = ns.GetBarGrowth(spec, role)
 	local tip = spec.tip + growth
 	local width = tip - spec.hitInner
 	local centerDistance = (tip + spec.hitInner) / 2
-	local shift = ns.GetBarShift(spec, side)
+	local shift = ns.GetBarShift(spec, role)
+	-- A flipped frame is mirrored round the orb's centre, onto its bottom half.
+	local y = button.flipped and -spec.yCenter or spec.yCenter
 
 	button:SetSize(width, spec.height)
 	button:ClearAllPoints()
-	button:SetPoint("CENTER", ns.root, "CENTER", side * (centerDistance + shift), spec.yCenter)
+	button:SetPoint("CENTER", ns.root, "CENTER", side * (centerDistance + shift), y)
 
 	local body = button.body
 	body:SetSize(width, spec.height)
 	body:ClearAllPoints()
-	body:SetPoint("CENTER", button.visualParent, "CENTER", side * (centerDistance + shift), spec.yCenter)
+	body:SetPoint("CENTER", button.visualParent, "CENTER", side * (centerDistance + shift), y)
 
 	LayoutArtSlices(button.backSlices, button, growth, centerDistance)
 	LayoutArtSlices(button.frameSlices, button, growth, centerDistance)
@@ -138,11 +153,14 @@ local function LayoutBar(button)
 	end
 end
 
--- side is -1 for the left wing and 1 for the right. The bar is two separate things. The secure
+-- role is "player" or "target", and the bar goes on that frame's side of the orb (ns.GetSide): -1 for
+-- the left wing and 1 for the right. The bar is two separate things. The secure
 -- button is an invisible click area: left click targets the unit, right click opens its menu.
 -- Secure frames can't move in combat, so everything visible lives on a plain "body" frame beside it,
 -- under visualParent, which is free to slide.
-local function CreateBar(name, unit, spec, side, visualParent)
+local function CreateBar(name, unit, spec, role, visualParent)
+	local side = ns.GetSide(role)
+	local flipped = ns.IsFlipped(role)
 	local button = CreateFrame("Button", name, ns.root, "SecureUnitButtonTemplate")
 	button:SetFrameStrata("LOW")
 	button:SetFrameLevel(ns.Level.bar)
@@ -160,18 +178,19 @@ local function CreateBar(name, unit, spec, side, visualParent)
 	bar:SetFillStyle(Enum.StatusBarFillStyle.StandardNoRangeFill)
 	bar:SetReverseFill(side < 0)
 
-	CreateFillCap(bar, spec, side)
+	CreateFillCap(bar, spec, side, flipped)
 
 	if spec.wedgeWidth then
-		local wedge = ns.CreateArt(bar, "ARTWORK", spec.wedgeArt)
+		local wedge = ns.CreateArt(bar, "ARTWORK", FillPieceArt(spec.wedgeArt, flipped))
 		wedge:SetWidth(spec.wedgeWidth)
 		if side < 0 then
 			wedge:SetPoint("TOPLEFT", bar, "TOPRIGHT")
 			wedge:SetPoint("BOTTOMLEFT", bar, "BOTTOMRIGHT")
-			wedge:SetTexCoord(1, 0, 0, 1)
+			SetArtCoords(wedge, 1, 0, false)
 		else
 			wedge:SetPoint("TOPRIGHT", bar, "TOPLEFT")
 			wedge:SetPoint("BOTTOMRIGHT", bar, "BOTTOMLEFT")
+			SetArtCoords(wedge, 0, 1, false)
 		end
 		bar.wedge = wedge
 	end
@@ -183,19 +202,49 @@ local function CreateBar(name, unit, spec, side, visualParent)
 
 	button.spec = spec
 	button.side = side
+	button.role = role
+	-- Texts and icons were laid out for the frame's usual side, and flip left to right on the other.
+	button.mirrored = ns.IsMirrored(role)
+	-- And top to bottom when the frame is turned upside down under the orb.
+	button.flipped = flipped
 	button.visualParent = visualParent
 	button.body = body
 	button.bar = bar
 	button.overlay = overlay
-	button.backSlices = CreateArtSlices(body, "BACKGROUND", spec.back, side, spec.art)
-	button.frameSlices = CreateArtSlices(overlay, "ARTWORK", spec.frame, side, spec.art)
+	button.backSlices = CreateArtSlices(body, "BACKGROUND", spec.back, side, spec.art, flipped)
+	button.frameSlices = CreateArtSlices(overlay, "ARTWORK", spec.frame, side, spec.art, flipped)
 	bars[#bars + 1] = button
 	return button
 end
 
+-- The pet and target of target bars stop their click area short of the slanted end nearest the orb.
+local function InsetInnerEnd(button)
+	local inset = button.spec.hitInset
+	if button.side < 0 then
+		button:SetHitRectInsets(0, inset, 0, 0)
+	else
+		button:SetHitRectInsets(inset, 0, 0, 0)
+	end
+end
+
+-- Places a text by anchors written for the frame's usual side and place, flipped left to right on the
+-- other side and top to bottom under the orb.
+local function PlaceSided(text, button, point, relativeTo, relativePoint, x, y)
+	local mirrored, flipped = button.mirrored, button.flipped
+	-- A name in a box lays itself out against the box's edge; flipped, it hangs from the top one.
+	text.hangsDown = flipped
+	ns.PlaceText(text, ns.FlipPoint(point, mirrored, flipped), relativeTo, ns.FlipPoint(relativePoint, mirrored, flipped),
+		mirrored and -x or x, flipped and -y or y)
+end
+
+-- A health or power value at a point of the bar written for the frame's usual side.
+local function CreateSidedValueText(button, key, point)
+	return ns.CreateValueText(button.overlay, key, button.body, ns.MirrorPoint(point, button.mirrored), button, button.mirrored)
+end
+
 -- The low health glow, behind the bar's back so only the part outside its outline shows.
 local function AddLowHealthGlow(button)
-	local slices = CreateArtSlices(button.body, "BACKGROUND", button.spec.glow, button.side, button.spec.art)
+	local slices = CreateArtSlices(button.body, "BACKGROUND", button.spec.glow, button.side, button.spec.art, button.flipped)
 	for _, slice in ipairs(slices) do
 		slice:SetDrawLayer("BACKGROUND", -8)
 		ns.AddLowHealthGlow(slice)
@@ -203,9 +252,10 @@ local function AddLowHealthGlow(button)
 	button.glowSlices = slices
 end
 
--- Name and level sit above the bar, so they're capped to its width rather than running under the orb.
+-- Name and level sit above the bar (below it, flipped), so they're capped to its width rather than
+-- running under the orb.
 local function PlaceName(text, button, spec, reserved)
-	ns.PlaceText(text, "BOTTOM", button.body, "TOP", spec.x, spec.y)
+	PlaceSided(text, button, "BOTTOM", button.body, "TOP", spec.x, spec.y)
 	button.nameText = text
 	button.nameReserved = reserved
 end
@@ -228,9 +278,10 @@ end
 -- its own art rather than a mirrored one.
 local MASK_REACH = 32 -- generate_art.py's MASK_REACH
 
-local function MaskBehindCap(segment, spec, side)
+local function MaskBehindCap(segment, spec, side, flipped)
 	local mask = segment:CreateMaskTexture(nil, "ARTWORK")
-	local art = side < 0 and "BarFillMaskLeft" or "BarFillMaskRight"
+	-- Masks can't take texture coordinates (see above), so a flipped bar has art of its own, turned over.
+	local art = (side < 0 and "BarFillMaskLeft" or "BarFillMaskRight") .. (flipped and "Flipped" or "")
 	mask:SetTexture(ns.Media(art), "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
 	mask:SetSize(spec.capWidth * MASK_REACH, spec.fillHeight)
 	if side < 0 then
@@ -258,8 +309,8 @@ local function CreatePredictionSegment(parent, level, previous, button)
 	else
 		segment:SetPoint("LEFT", fill, "RIGHT")
 	end
-	CreateFillCap(segment, spec, side)
-	MaskBehindCap(segment, spec, side)
+	CreateFillCap(segment, spec, side, button.flipped)
+	MaskBehindCap(segment, spec, side, button.flipped)
 	return segment
 end
 
@@ -272,10 +323,11 @@ local function CreateEndGlow(parent, button)
 	if side < 0 then
 		glow:SetPoint("TOPLEFT", button.bar, "TOPLEFT", -spec.capWidth, 0)
 		glow:SetPoint("BOTTOMLEFT", button.bar, "BOTTOMLEFT", -spec.capWidth, 0)
-		glow:SetTexCoord(1, 0, 0, 1)
+		SetArtCoords(glow, 1, 0, button.flipped)
 	else
 		glow:SetPoint("TOPRIGHT", button.bar, "TOPRIGHT", spec.capWidth, 0)
 		glow:SetPoint("BOTTOMRIGHT", button.bar, "BOTTOMRIGHT", spec.capWidth, 0)
+		SetArtCoords(glow, 0, 1, button.flipped)
 	end
 	glow:SetVertexColor(CLEAR:GetRGBA())
 	return glow
@@ -443,15 +495,15 @@ local function CreatePlayerName(button)
 end
 
 local function CreatePlayerHealth()
-	local button = CreateBar("DibsUIPlayerHealth", "player", Layout.health, -1, ns.root)
+	local button = CreateBar("DibsUIPlayerHealth", "player", Layout.health, "player", ns.root)
 	AddLowHealthGlow(button)
 	local bar = button.bar
 	CreatePrediction(button, "player")
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
 
-	local left = ns.CreateValueText(button.overlay, "playerLeft", button.body, "LEFT", button)
-	local right = ns.CreateValueText(button.overlay, "playerRight", button.body, "RIGHT", button)
+	local left = CreateSidedValueText(button, "playerLeft", "LEFT")
+	local right = CreateSidedValueText(button, "playerRight", "RIGHT")
 
 	bar:RegisterUnitEvent("UNIT_HEALTH", "player")
 	bar:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
@@ -482,12 +534,13 @@ local function CreatePetName(button)
 	local overlay = button.overlay
 	local nameSpec = ns.Text.petName
 	local name = ns.CreateText(overlay, "petName", button)
-	ns.PlaceText(name, "BOTTOM", button.body, "TOP", nameSpec.x, nameSpec.y)
+	PlaceSided(name, button, "BOTTOM", button.body, "TOP", nameSpec.x, nameSpec.y)
 
 	local iconSpec = ns.Text.petHappiness
 	local happiness = CreateFrame("Frame", nil, overlay, "PetFrameHappinessTemplate")
 	happiness:SetSize(iconSpec.size, iconSpec.size)
-	happiness:SetPoint("BOTTOMLEFT", button.body, "BOTTOMLEFT", iconSpec.x, iconSpec.y)
+	local corner = ns.FlipPoint("BOTTOMLEFT", button.mirrored, button.flipped)
+	happiness:SetPoint(corner, button.body, corner, button.mirrored and -iconSpec.x or iconSpec.x, button.flipped and -iconSpec.y or iconSpec.y)
 
 	overlay:RegisterUnitEvent("UNIT_NAME_UPDATE", "pet")
 	overlay:RegisterUnitEvent("UNIT_LEVEL", "pet")
@@ -504,9 +557,9 @@ end
 
 local function CreatePetHealth()
 	local spec = Layout.pet
-	local button = CreateBar("DibsUIPetHealth", "pet", spec, -1, ns.root)
+	local button = CreateBar("DibsUIPetHealth", "pet", spec, "player", ns.root)
 	AddLowHealthGlow(button)
-	button:SetHitRectInsets(0, spec.hitInset, 0, 0)
+	InsetInnerEnd(button)
 	local bar = button.bar
 	local color = ns.Colors.playerHealth
 	SetBarColor(bar, color[1], color[2], color[3])
@@ -570,7 +623,7 @@ local function CreateTargetName(button)
 	local overlay = button.overlay
 
 	local level = ns.CreateText(overlay, "targetLevel", button)
-	ns.PlaceText(level, "BOTTOMRIGHT", button.body, "TOPRIGHT", ns.Text.targetLevel.x, ns.Text.targetLevel.y)
+	PlaceSided(level, button, "BOTTOMRIGHT", button.body, "TOPRIGHT", ns.Text.targetLevel.x, ns.Text.targetLevel.y)
 
 	-- Leaves room each side so a long name stays centred and clear of the level.
 	local name = ns.CreateNameText(overlay, "targetName", button)
@@ -603,15 +656,21 @@ local function CreateTargetWing()
 
 	local offset, startOffset, endOffset, elapsed = 0, 0, 0, 0
 
+	-- The target's side of the orb, and where its clip starts, past the ring.
+	local side = ns.GetSide("target")
+	local function GetClipInner()
+		return Layout.wingClipInner
+	end
+
 	local function SetOffset(value)
 		offset = value
 		wing:ClearAllPoints()
 		wing:SetPoint("CENTER", ns.root, "CENTER", value, 0)
 	end
 
-	-- Far enough for everything on the wing to end up past the clip edge.
+	-- Far enough for everything on the wing to end up past the clip edge, towards the orb.
 	local function GetTuckedOffset()
-		return Layout.wingClipInner - ns.GetWingReach(1)
+		return side * (GetClipInner() - ns.GetBarReach(ns.db.showTargetOfTarget and Layout.pet or Layout.health, "target"))
 	end
 
 	local function OnUpdate(_, delta)
@@ -657,9 +716,13 @@ local function CreateTargetWing()
 	function wing:UpdateWidth()
 		-- The target of target bar reaches past the root, and the clip has to leave room for it.
 		clip:ClearAllPoints()
-		clip:SetPoint("TOPLEFT", ns.root, "TOP", Layout.wingClipInner, Layout.wingClipHeadroom)
-		clip:SetPoint("BOTTOMRIGHT", ns.root, "BOTTOM", ns.GetWingReach(1) + Layout.rootMargin, 0)
-		self:SetSize(ns.GetRootWidth(), Layout.rootHeight)
+		local inner = side * GetClipInner()
+		local outer = side * (ns.GetWingReach(side) + Layout.rootMargin)
+		clip:SetPoint("TOPLEFT", ns.root, "TOP", math.min(inner, outer), Layout.wingClipHeadroom)
+		-- Flipped under the orb, the target's debuffs hang below it, so the clip reaches down as well.
+		local bottom = ns.GetAuraPlacement("target") == "below" and -Layout.wingClipHeadroom or 0
+		clip:SetPoint("BOTTOMRIGHT", ns.root, "BOTTOM", math.max(inner, outer), bottom)
+		self:SetSize(ns.GetRootWidth(), ns.GetRootHeight())
 		if not hasTarget then
 			Snap()
 		end
@@ -671,13 +734,13 @@ end
 -- The secure buttons only take clicks now, and RegisterUnitWatch shows and hides them,
 -- since a secure frame can't be toggled from addon code in combat.
 local function CreateTargetBars(wing)
-	local healthButton = CreateBar("DibsUITargetHealth", "target", Layout.health, 1, wing)
-	local powerButton = CreateBar("DibsUITargetPower", "target", Layout.power, 1, wing)
+	local healthButton = CreateBar("DibsUITargetHealth", "target", Layout.health, "target", wing)
+	local powerButton = CreateBar("DibsUITargetPower", "target", Layout.power, "target", wing)
 	RegisterUnitWatch(healthButton)
 	RegisterUnitWatch(powerButton)
 
-	local healthText = ns.CreateValueText(healthButton.overlay, "targetRight", healthButton.body, "RIGHT", healthButton)
-	local powerText = ns.CreateValueText(powerButton.overlay, "targetPowerRight", powerButton.body, "RIGHT", powerButton)
+	local healthText = CreateSidedValueText(healthButton, "targetRight", "RIGHT")
+	local powerText = CreateSidedValueText(powerButton, "targetPowerRight", "RIGHT")
 
 	CreateTargetName(healthButton)
 	CreatePrediction(healthButton, "target")
@@ -727,18 +790,18 @@ end
 local function CreateTargetOfTarget(wing)
 	local unit = "targettarget"
 	local spec = Layout.pet
-	local button = CreateBar("DibsUITargetOfTarget", unit, spec, 1, wing)
-	button:SetHitRectInsets(spec.hitInset, 0, 0, 0)
+	local button = CreateBar("DibsUITargetOfTarget", unit, spec, "target", wing)
+	InsetInnerEnd(button)
 	local bar, body, overlay = button.bar, button.body, button.overlay
 
 	local levelSpec, nameSpec = ns.Text.totLevel, ns.Text.totName
 	local level = ns.CreateText(overlay, "totLevel", button)
-	ns.PlaceText(level, "BOTTOMRIGHT", body, "TOPRIGHT", levelSpec.x, levelSpec.y)
+	PlaceSided(level, button, "BOTTOMRIGHT", body, "TOPRIGHT", levelSpec.x, levelSpec.y)
 
 	-- Target names can be long. This keeps them over the bar and clear of the level at any width.
 	local name = ns.CreateNameText(overlay, "totName", button)
-	ns.PlaceText(name, "BOTTOMLEFT", body, "TOPLEFT", nameSpec.x, nameSpec.y)
-	ns.PlaceText(name, "BOTTOMRIGHT", level, "BOTTOMLEFT", -3, 0)
+	PlaceSided(name, button, "BOTTOMLEFT", body, "TOPLEFT", nameSpec.x, nameSpec.y)
+	PlaceSided(name, button, "BOTTOMRIGHT", level, "BOTTOMLEFT", -3, 0)
 
 	local function Update(interpolation)
 		local exists = UnitExists(unit)

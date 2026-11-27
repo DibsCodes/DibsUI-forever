@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.12
+
+- Fixed the cast ring's latency showing as a full red ring instead of a thin slice at the end of the cast
+- New: plugins can arrange the player and target bars. The first is [DibsUI-Stacked](https://github.com/DibsCodes/DibsUI-Stacked) by Machine, which puts both bars on the same side of the orb with the lower one turned upside down. Without a plugin nothing changes
+- For plugin authors: an arrangement hook, `DibsUI_Hooks.GetArrangement` (see Plugins in the README)
+
 ## 0.3.11
 
 - New: while you cast a spell that costs mana, the orb shows how much it will spend: that part of the liquid is washed pale, with a line where your mana will be once the cast goes off. Turn it off with Show mana cost of casts on the Power Orb page

@@ -59,11 +59,11 @@ ns.AuraAnchorTargets = {
 ns.AuraGroups = {
 	{ key = "playerLongBuffs", label = "Player long buffs", built = true, hasListMode = true },
 	{ key = "playerShortBuffs", label = "Player short buffs", built = true, anchored = true,
-		anchorNote = "Sits above the player bar, as wide as it and clear of your name, and fills right, then up." },
+		anchorNote = "Sits above the player bar, as wide as it and clear of your name, and fills right, then up. If DibsUI-Stacked puts the target on top, the player bar is turned upside down under the orb, and these sit under it and your name, filling down." },
 	{ key = "playerDebuffs", label = "Player debuffs", built = true, hasListMode = true },
 	{ key = "targetBuffs", label = "Target buffs", built = true },
 	{ key = "targetDebuffs", label = "Target debuffs", built = true, anchored = true, hasOwnSize = true,
-		anchorNote = "Sits above the target bar, as wide as it and clear of its name and level, and fills right, then up. Your own debuffs come first, at their own size. Shows while you have a target." },
+		anchorNote = "Sits above the target bar, as wide as it and clear of its name and level, and fills right, then up. If DibsUI-Stacked puts the player on top, the target bar is turned upside down under the orb, and these sit under it and its name, filling down. Your own debuffs come first, at their own size. Shows while you have a target." },
 	{ key = "focusBuffs", label = "Focus buffs", built = true },
 	{ key = "focusDebuffs", label = "Focus debuffs", built = true, anchored = true, hasOwnSize = true,
 		anchorNote = "Sits above the focus bar, as wide as it and clear of its name, and fills right, then up. Your own debuffs come first, at their own size. Shows while you have a focus." },
@@ -482,7 +482,8 @@ ns.hasMasque = false
 local GROUP_SPECS = {
 	playerLongBuffs = { unit = "player", filter = "HELPFUL", enchants = true },
 	-- Short buffs fill from the bar's outer end, towards the orb, then up.
-	playerShortBuffs = { unit = "player", filter = "HELPFUL", growth = "RIGHT_UP", bar = "DibsUIPlayerHealth", texts = { "playerName" } },
+	-- role: the frame whose side and place in a stack decide where the group goes (ns.GetAuraPlacement).
+	playerShortBuffs = { unit = "player", filter = "HELPFUL", growth = "RIGHT_UP", bar = "DibsUIPlayerHealth", texts = { "playerName" }, role = "player" },
 	-- Every debuff on the player, placed like the long buffs, with borders in the debuff type's color.
 	playerDebuffs = { unit = "player", filter = "HARMFUL", dispel = true },
 	-- Every buff on the target, long or short, placed like the long buffs. Buffs the player can steal or
@@ -492,7 +493,7 @@ local GROUP_SPECS = {
 	-- debuff type's color.
 	targetDebuffs = {
 		unit = "target", filter = "HARMFUL", growth = "RIGHT_UP", bar = "DibsUITargetHealth",
-		texts = { "targetName", "targetLevel" }, dispel = true,
+		texts = { "targetName", "targetLevel" }, dispel = true, role = "target",
 		auraGroups = {
 			{ name = "own", sizeField = "ownIconSize", filters = { isFromPlayerOrPlayerPet = true } },
 			{ name = "others", sizeField = "iconSize", filters = { isFromPlayerOrPlayerPet = false } },
@@ -511,6 +512,65 @@ local GROUP_SPECS = {
 }
 
 local groups = {}
+
+-- Sides ------------------------------------------------------------------------------------------
+
+-- Places written for the usual arrangement flip to stay clear of the bars when they're moved. With the
+-- player bar on the right of the orb they flip left to right: whatever is attached to the player bar,
+-- and the target's buffs under the orb, which would otherwise sit under the bars. With the target
+-- stacked over the player bar, whatever is attached to the player bar flips top to bottom, since above
+-- it is the target. The settings keep the unflipped place. Returns the flips across and up and down.
+local function GetPositionFlips(group, position)
+	if not position.anchorTo then
+		return false, false
+	end
+	local onPlayer = position.anchorTo == "player"
+	local flipX = ns.GetSide("player") > 0 and (onPlayer or (group.key == "targetBuffs" and position.anchorTo == "orb"))
+	local flipY = onPlayer and ns.IsTargetOnTop()
+	return flipX, flipY
+end
+
+local function Swap(text, a, b)
+	return (text:gsub(a, "<"):gsub(b, a):gsub("<", b))
+end
+
+-- A point name, or a growth such as "LEFT_UP", flipped.
+local function Flip(text, flipX, flipY)
+	if flipX then
+		text = Swap(text, "LEFT", "RIGHT")
+	end
+	if flipY then
+		text = Swap(text, "TOP", "BOTTOM")
+		text = Swap(text, "UP", "DOWN")
+	end
+	return text
+end
+
+-- Which way a group's icons fill. A group above its bar fills as usual, flipped with the bar. Under a
+-- stack it fills down, from the bar's outer end towards the orb, keeping clear of the cast text under it.
+local function GetGrowth(group)
+	local spec, settings = group.spec, group.settings
+	if spec.role then
+		if ns.GetAuraPlacement(spec.role) == "below" then
+			return ns.GetSide(spec.role) < 0 and "RIGHT_DOWN" or "LEFT_DOWN"
+		end
+		return Flip(spec.growth, ns.IsMirrored(spec.role), false)
+	end
+	return Flip(spec.growth or settings.growth, GetPositionFlips(group, settings))
+end
+
+-- The side a list's icons are on, and whether it grows up, flipped with its place.
+local function GetIconSide(group)
+	local list = group.settings.list
+	return Flip(list.iconSide, (GetPositionFlips(group, list)))
+end
+
+local function GetsListTaller(group)
+	local list = group.settings.list
+	local _, flipY = GetPositionFlips(group, list)
+	return list.growUp ~= flipY
+end
+
 
 local function IsMasqueSkinned(group)
 	return group.masque ~= nil and not group.masque.db.Disabled
@@ -541,7 +601,7 @@ end
 -- with the soonest to expire. Elsewhere the soonest comes first. Auras that never expire count as the
 -- longest either way.
 local function IsLongestFirst(group, mode)
-	return mode == "list" and not group.settings.list.growUp
+	return mode == "list" and not GetsListTaller(group)
 end
 
 local SORT_EXPIRATION_ONLY = 5
@@ -839,10 +899,11 @@ local function StyleParts(group, mode, parts)
 	parts.name:ClearAllPoints()
 	if isList then
 		local list = settings.list
-		local justify = list.iconSide == "LEFT" and "LEFT" or "RIGHT"
+		local iconSide = GetIconSide(group)
+		local justify = iconSide == "LEFT" and "LEFT" or "RIGHT"
 		SetTextStyle(parts.name, list.nameFont, list.nameSize, list.nameColor)
 		SetTimeStyle(parts, list.timeFont, list.timeSize, list.timeColor)
-		if list.iconSide == "LEFT" then
+		if iconSide == "LEFT" then
 			parts.name:SetPoint("TOPLEFT", button, "TOPRIGHT", LIST_TEXT_GAP + list.nameX, list.nameY)
 			parts.time:SetPoint("BOTTOMLEFT", button, "BOTTOMRIGHT", LIST_TEXT_GAP + list.timeX, list.timeY)
 		else
@@ -954,10 +1015,11 @@ local function GetLayout(group, mode)
 	local layout = {}
 	if mode == "list" then
 		local list = settings.list
-		local left = list.iconSide == "LEFT"
+		local left = GetIconSide(group) == "LEFT"
 		layout.vertical = true
-		layout.anchor = (list.growUp and "BOTTOM" or "TOP") .. (left and "LEFT" or "RIGHT")
-		layout.signX, layout.signY = left and 1 or -1, list.growUp and 1 or -1
+		local growUp = GetsListTaller(group)
+		layout.anchor = (growUp and "BOTTOM" or "TOP") .. (left and "LEFT" or "RIGHT")
+		layout.signX, layout.signY = left and 1 or -1, growUp and 1 or -1
 		layout.isList = true
 		layout.width = list.iconSize + LIST_TEXT_GAP + LIST_TEXT_WIDTH
 		layout.height = list.iconSize
@@ -965,8 +1027,7 @@ local function GetLayout(group, mode)
 		layout.lineSize = math.huge
 		layout.padY = 0
 	else
-		local growthKey = group.spec.growth or settings.growth
-		local growth = ns.AuraGrowthsByKey[growthKey]
+		local growth = ns.AuraGrowthsByKey[GetGrowth(group)]
 		local function Has(direction)
 			return growth.line == direction or growth.wrap == direction
 		end
@@ -1146,12 +1207,20 @@ local function PlaceHolder(group)
 		local body = GetBarBody(group)
 		if body then
 			-- The clearance is in the bar's units, and an offset is in the holder's.
-			holder:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", 0, GetTextClearance(group.spec.texts) * GetBarUnitRatio(group, body))
+			local ratio = GetBarUnitRatio(group, body)
+			-- An upside down frame has its name under the bar, and the group under that.
+			if group.spec.role and ns.GetAuraPlacement(group.spec.role) == "below" then
+				holder:SetPoint("TOPRIGHT", body, "BOTTOMRIGHT", 0, -GetTextClearance(group.spec.texts) * ratio)
+			else
+				holder:SetPoint("BOTTOMRIGHT", body, "TOPRIGHT", 0, GetTextClearance(group.spec.texts) * ratio)
+			end
 		end
 		return
 	end
 	local position = GetPosition(group.settings)
-	holder:SetPoint(position.point, GetAnchorTarget(position.anchorTo), position.anchorPoint, position.x, position.y)
+	local flipX, flipY = GetPositionFlips(group, position)
+	holder:SetPoint(Flip(position.point, flipX, flipY), GetAnchorTarget(position.anchorTo),
+		Flip(position.anchorPoint, flipX, flipY), flipX and -position.x or position.x, flipY and -position.y or position.y)
 end
 
 -- Updates --------------------------------------------------------------------------------------------
@@ -1288,11 +1357,13 @@ local function FinishMoving(group)
 	holder:SetUserPlaced(false)
 	local settings = group.settings
 	local position = GetPosition(settings)
-	local frameX, frameY = GetPointPosition(holder, position.point)
-	local targetX, targetY = GetPointPosition(GetAnchorTarget(position.anchorTo), position.anchorPoint)
+	-- A flipped place is measured flipped and saved unflipped.
+	local flipX, flipY = GetPositionFlips(group, position)
+	local frameX, frameY = GetPointPosition(holder, Flip(position.point, flipX, flipY))
+	local targetX, targetY = GetPointPosition(GetAnchorTarget(position.anchorTo), Flip(position.anchorPoint, flipX, flipY))
 	local scale = holder:GetEffectiveScale()
-	position.x = (frameX - targetX) / scale
-	position.y = (frameY - targetY) / scale
+	position.x = (frameX - targetX) / scale * (flipX and -1 or 1)
+	position.y = (frameY - targetY) / scale * (flipY and -1 or 1)
 	CleanGroup(settings, group.key)
 	PlaceHolder(group)
 	if ns.OnAuraSettingsMoved then
@@ -1559,12 +1630,27 @@ end
 
 -- The top of the player's short buffs, and the scale it's measured in, while any are showing; nil
 -- otherwise. In combat the count is the last one that could be read, as for the frame's own size.
-function ns.GetShortBuffsTop()
-	local group = groups.playerShortBuffs
+local function GetShownTop(group)
 	if not (group and group.settings.enabled and group.holder:IsVisible() and (group.count or 0) > 0) then
 		return
 	end
 	return group.holder:GetTop(), group.holder:GetEffectiveScale()
+end
+
+-- The top of the player's short buffs while they show above the player bar.
+function ns.GetShortBuffsTop()
+	if ns.GetAuraPlacement("player") ~= "above" then
+		return
+	end
+	return GetShownTop(groups.playerShortBuffs)
+end
+
+-- The top of the target's debuffs while they show above the target bar.
+function ns.GetTargetDebuffsTop()
+	if ns.GetAuraPlacement("target") ~= "above" then
+		return
+	end
+	return GetShownTop(groups.targetDebuffs)
 end
 
 function ns.CreateAuraFrames()
@@ -1586,10 +1672,16 @@ function ns.CreateAuraFrames()
 	local petBody = DibsUIPetHealth and DibsUIPetHealth.body
 	local playerAnchor = CreateFrame("Frame", nil, ns.root)
 	ns.playerAuraAnchor = playerAnchor
+	-- With the player bar upside down under the orb, what's attached here hangs down instead, so the span
+	-- drops below the pet bar and its name, which is under it too, rather than rising above them.
 	local function PlacePlayerAnchor()
 		local lift = 0
 		if petBody and petBody:IsShown() then
-			lift = ns.Layout.health.height + GetTextClearance({ "petName" })
+			if ns.IsTargetOnTop() then
+				lift = -(ns.Layout.health.height + GetTextClearance({ "petName" }))
+			else
+				lift = ns.Layout.health.height + GetTextClearance({ "petName" })
+			end
 		end
 		playerAnchor:ClearAllPoints()
 		playerAnchor:SetPoint("TOPLEFT", playerBody, "TOPLEFT", 0, lift)

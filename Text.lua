@@ -251,7 +251,8 @@ local function LayoutValue(text)
 	local key = text.styleKey
 	local spec, leadSpec = ns.Text[key], ns.Text.lead
 	local frame, point, lead = text.anchorFrame, text.anchorPoint, text.lead
-	local x, y = spec.x + ns.GetTextOption(key, "offsetX"), spec.y + ns.GetTextOption(key, "offsetY")
+	-- On a mirrored bar the spot is on the other end, so its default distance in from it flips too.
+	local x, y = (text.mirrored and -spec.x or spec.x) + ns.GetTextOption(key, "offsetX"), spec.y + ns.GetTextOption(key, "offsetY")
 	text.usesLead = ns.GetTextOption(key, "format") == "percentCurrent"
 	text:ClearAllPoints()
 	lead:ClearAllPoints()
@@ -320,6 +321,9 @@ local function LayoutName(text)
 	end
 	text.remeasure = nil
 	text:ClearAllPoints()
+	-- A name sits on its box, over the bar. Under a bar turned upside down (an arrangement plugin's
+	-- lower frame) the box is under the bar, and the name hangs from it instead.
+	local edge = text.hangsDown and "TOP" or "BOTTOM"
 	local useRow = ns.db.showSurnames and not issecretvalue(name) and not issecretvalue(surname)
 		and surname ~= nil and surname ~= ""
 	if useRow then
@@ -342,12 +346,12 @@ local function LayoutName(text)
 			else
 				text:SetWidth(0)
 			end
-			text:SetPoint("BOTTOMLEFT", box, "BOTTOM", -total / 2, 0)
+			text:SetPoint(edge .. "LEFT", box, edge, -total / 2, 0)
 		end
 	end
 	if not useRow then
-		text:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT")
-		text:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT")
+		text:SetPoint(edge .. "LEFT", box, edge .. "LEFT")
+		text:SetPoint(edge .. "RIGHT", box, edge .. "RIGHT")
 		if level ~= nil then
 			text:SetFormattedText("%s |cffffff00%d|r", name, level)
 		else
@@ -458,10 +462,12 @@ function ns.CreateText(parent, key, hoverRegion)
 end
 
 -- A health or power spot, placed at point ("LEFT", "RIGHT", "CENTER" or "TOP") of anchorFrame. Fill it with ns.ShowValue.
-function ns.CreateValueText(parent, key, anchorFrame, point, hoverRegion)
+-- mirrored: the bar is on the other side from the one its spots were laid out for, and point is already flipped.
+function ns.CreateValueText(parent, key, anchorFrame, point, hoverRegion, mirrored)
 	local text = NewText(parent, key, hoverRegion)
 	text.lead = parent:CreateFontString(nil, "OVERLAY")
 	text.lead:SetWordWrap(false)
+	text.mirrored = mirrored
 	text.anchorFrame, text.anchorPoint = anchorFrame, point
 	LayoutValue(text)
 	Register(text)

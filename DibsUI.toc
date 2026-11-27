@@ -1,11 +1,11 @@
 ## Interface: 16001
 ## Title: DibsUI
 ## Author: Dibs
-## Version: 0.3.11
+## Version: 0.3.12
 ## Notes: Replaces the player and target frames with a winged power orb layout.
 ## SavedVariables: DibsUIDB
 ## Dependencies: DibsUI-Options
-## OptionalDeps: Masque
+## OptionalDeps: Masque, DibsUI-Stacked
 ## IconTexture: Interface\AddOns\DibsUI\Media\AddonIcon
 ## X-Curse-Project-ID: 1794621
 

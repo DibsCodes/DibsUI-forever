@@ -365,6 +365,20 @@ The minimap button's settings are the same in every profile.
 
 Frame, width, position, pet frame, target of target and profile settings can't be changed during combat, but text, font, last name, heal prediction, PvP icon, opacity, orb, cast, buff, combat text and minimap settings can. Changes to buff icons, fonts and colors made during combat show once it ends.
 
+## Plugins
+
+**[DibsUI-Stacked](https://github.com/DibsCodes/DibsUI-Stacked)** by Machine puts the player and target bars on the same side of the orb, one above the other. It has its own Stacked Bars tab in the settings window.
+
+For plugin authors, DibsUI has an arrangement hook (version 1). A plugin that DibsUI lists in its TOC's `OptionalDeps` loads first and can set it before the bars are built:
+
+```lua
+DibsUI_Hooks = DibsUI_Hooks or {}
+DibsUI_Hooks.GetArrangement = function() return barSides, stackOrder end
+-- barSides: "split" (the usual), "left" or "right"; stackOrder: "targetTop" or "playerTop"
+```
+
+DibsUI asks once while loading, then sets `DibsUI_Hooks.version` and `DibsUI_Hooks.applied`. Without a plugin, or with anything it doesn't understand, the bars stay player left, target right.
+
 ## Status
 
 Early development, for interface version 16001.

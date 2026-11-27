@@ -569,8 +569,9 @@ local PUSHBACK_SLIDE = 0.3
 -- A send more than this long before a cast starts belongs to something else (an instant, or a spell the
 -- server refused), so the cast uses the game's world latency instead.
 local LATENCY_WINDOW = 1.5
--- How long the latency swipe's frozen cooldown lasts, so it doesn't visibly move during a cast.
-local LATENCY_HOLD = 1000000
+-- The longest the latency swipe's held cooldown runs, in seconds (a day).
+local LATENCY_HOLD_MAX = 86400
+
 
 -- The global cooldown's own spell. A spell on the global cooldown reports it too (isOnGCD).
 --
@@ -605,8 +606,11 @@ local function CreateCastRing(orb)
 	-- Latency: the last part of a cast, as long as the delay between sending the spell and the server
 	-- saying it started. The server finishes the cast that much before the ring does, so the next spell
 	-- can be pressed once the fill reaches it. It's a second swipe under the cast's, held still: unreversed,
-	-- a swipe is the remaining part, which ends at 12 o'clock, and with a very long duration it doesn't
-	-- visibly move during a cast.
+	-- a swipe is the remaining part, which ends at 12 o'clock. Its start must never be negative: the client
+	-- takes a negative start as zero, so a long cooldown shows a full ring (0.3.11's bug, seen in game).
+	-- GetTime counts from the PC's boot, so the cooldown is as long as it can be with its start still
+	-- above zero (capped at LATENCY_HOLD_MAX), then paused. Paused, it holds still; if a client ever drew a
+	-- paused cooldown running, as UIForever does, the long duration still keeps it from moving visibly.
 	local latencyRing = CreateFrame("Cooldown", "DibsUICastLatency", orb)
 	latencyRing:SetAllPoints()
 	latencyRing:SetFrameLevel(orb:GetFrameLevel() + 4)
@@ -658,7 +662,11 @@ local function CreateCastRing(orb)
 			return
 		end
 		local fraction = math.min(castLatency / castDuration, 1)
-		latencyRing:SetCooldown(GetTime() - (1 - fraction) * LATENCY_HOLD, LATENCY_HOLD)
+		local now = GetTime()
+		local hold = math.min(LATENCY_HOLD_MAX, now * 0.99 / math.max(1 - fraction, 0.01))
+		latencyRing:Resume()
+		latencyRing:SetCooldown(now - (1 - fraction) * hold, hold)
+		latencyRing:Pause()
 	end
 
 	local function ShowStaticRing()

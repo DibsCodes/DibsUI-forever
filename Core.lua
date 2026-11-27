@@ -64,7 +64,8 @@ ns.Layout = {
 	-- The target wing slides from under the ring, so it's clipped where the bar first clears it.
 	-- Left of this it would show through the orb, which is see-through at rest.
 	wingClipInner = 51,
-	-- The clip reaches this far above the frame, so target debuffs stacked above the bar aren't cut off.
+	-- The clip reaches this far above the frame, so target debuffs stacked above the bar aren't cut off,
+	-- and as far below it for a target flipped under the orb, with its debuffs under it.
 	wingClipHeadroom = 400,
 
 	-- yCenter/height/tip: the visible bar outline. hitInner: where the click area starts.
@@ -168,6 +169,34 @@ ns.Text = {
 	focusCastTime = { size = 17, x = 0, y = -2 }, -- TOP of the text to the BOTTOM of the spell name
 	focusMoverLabel = { size = 22, x = 0, y = 4 }, -- BOTTOM of the text to the TOP of the drag handle
 }
+
+-- A point name on the other side, left for right: anchors written for one wing, used on a mirrored one.
+local MIRRORED_POINTS = {
+	LEFT = "RIGHT", RIGHT = "LEFT", TOPLEFT = "TOPRIGHT", TOPRIGHT = "TOPLEFT",
+	BOTTOMLEFT = "BOTTOMRIGHT", BOTTOMRIGHT = "BOTTOMLEFT",
+}
+
+function ns.MirrorPoint(point, mirrored)
+	if mirrored then
+		return MIRRORED_POINTS[point] or point
+	end
+	return point
+end
+
+-- A point name flipped top to bottom, for a frame turned upside down under the orb.
+local FLIPPED_POINTS = {
+	TOP = "BOTTOM", BOTTOM = "TOP", TOPLEFT = "BOTTOMLEFT", BOTTOMLEFT = "TOPLEFT",
+	TOPRIGHT = "BOTTOMRIGHT", BOTTOMRIGHT = "TOPRIGHT",
+}
+
+-- Flipped left to right (flipX) and top to bottom (flipY).
+function ns.FlipPoint(point, flipX, flipY)
+	point = ns.MirrorPoint(point, flipX)
+	if flipY then
+		return FLIPPED_POINTS[point] or point
+	end
+	return point
+end
 
 -- 999, 1.2k, 12k, 1.2m, 12m: Blizzard's documented rule for abbreviation breakpoints. The numbers
 -- can be secret, so the client has to do the shortening; addon code can't divide them.
